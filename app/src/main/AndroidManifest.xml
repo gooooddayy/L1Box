@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.github.tvbox.osc">
+    <!-- 在 Android 11 中，应用程序需要声明它们要使用的其他应用程序的包名 -->
+    <queries>
+        <package android:name="idm.internet.download.manager.plus" />
+        <!-- 外部播放器：Android 11+ 的包可见性规则下，未在此声明的包在 getApplicationInfo 里查不到
+             （=装了也检测不到、列表里不出现）。MX 的 pro/ad 两个包名都要声明，与代码里的识别清单一致。
+             「附近TVBox」走局域网 HTTP 推送、不是按包名吊起，故不需要在这里声明。 -->
+        <package android:name="com.mxtech.videoplayer.pro" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="xyz.re.player.ex" />
+        <package android:name="org.xbmc.kodi" />
+        <package android:name="org.videolan.vlc" />
+    </queries>
+
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <!-- 以下三项由打包工具依据权限/屏幕方向自动注入且默认为 required=true，
+         会导致应用商店过滤掉无 GPS / 无 WiFi / 不支持横屏的设备，
+         显式声明为 required=false 以覆盖，保证可安装设备范围最大化 -->
+    <uses-feature
+        android:name="android.hardware.location"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.landscape"
+        android:required="false" />
+    <!-- 竖屏由 Activity 的 screenOrientation 自动注入且默认 required=true，
+         会把不支持竖屏的设备（部分车机/横屏设备）过滤掉，显式覆盖为 false -->
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- OkGo 库自带此权限，系统级权限普通应用拿不到也无用，剥离 -->
+    <uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS" tools:node="remove" />
+
+    <application
+        android:name=".base.App"
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:icon="@drawable/app_icon"
+        android:label="@string/app_name"
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="true"
+        android:resizeableActivity="true"
+        android:supportsRtl="false"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".ui.activity.SplashActivity"
+            android:exported="true"
+            android:theme="@style/SplashTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ui.activity.SubscriptionActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.PortraitCaptureActivity"
+            android:screenOrientation="portrait"
+            android:clearTaskOnLaunch="true"
+            android:stateNotNeeded="true"
+            android:exported="false"
+            android:theme="@style/zxing_CaptureTheme"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+        <activity
+            android:name=".ui.activity.MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.DetailActivity"
+            android:supportsPictureInPicture="true"
+            android:launchMode="singleTask"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.FastSearchActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.SettingActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.HistoryActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.CollectActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|fontScale|uiMode"
+            android:exported="false" />
+
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- autosize设计尺寸 -->
+        <meta-data
+            android:name="design_width_in_dp"
+            android:value="360" />
+        <meta-data
+            android:name="design_height_in_dp"
+            android:value="820" />
+ <!-- immersionbar沉浸状态兰适配华为（huawei）刘海屏 -->
+        <meta-data
+            android:name="android.notch_support"
+            android:value="true" /> <!-- immersionbar沉浸状态兰适配小米（xiaomi）刘海屏 -->
+        <meta-data
+            android:name="notch.config"
+            android:value="portrait|landscape" />
+
+        <!-- 第三方库 Activity 补齐 exported：避免 Android 12+ / 部分国产 ROM 强制校验导致安装失败 -->
+        <activity
+            android:name="com.lxj.xpopup.util.XPermission$PermissionActivity"
+            android:exported="false"
+            tools:node="merge" />
+        <activity
+            android:name="com.blankj.utilcode.util.UtilsTransActivity4MainProcess"
+            android:exported="false"
+            tools:node="merge" />
+        <activity
+            android:name="com.blankj.utilcode.util.UtilsTransActivity"
+            android:exported="false"
+            tools:node="merge" />
+        <activity
+            android:name="cat.ereza.customactivityoncrash.activity.DefaultErrorActivity"
+            android:exported="false"
+            tools:node="merge" />
+        <activity
+            android:name="com.obsez.android.lib.filechooser.permissions.PermissionActivity"
+            android:exported="false"
+            tools:node="merge" />
+    </application>
+
+</manifest>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F5F6F8"
+    android:gravity="center_horizontal"
+    tools:context=".ui.activity.SubscriptionActivity">
+
+    <com.hjq.bar.TitleBar
+        android:id="@+id/title_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:title="订阅管理"
+        app:rightIcon="@drawable/ic_add_24"
+        >
+
+        <ImageView
+            android:id="@+id/iv_use_tip"
+            android:layout_width="wrap_content"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_use_description_24"
+            android:layout_gravity="end|center_vertical"
+            android:paddingLeft="20dp"
+            android:layout_marginRight="50dp"/>
+    </com.hjq.bar.TitleBar>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:overScrollMode="never"
+            android:paddingBottom="20dp"
+            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+            tools:listitem="@layout/item_subscription" />
+
+        <!-- 空状态：无任何订阅源时才显示居中双入口，有源后隐藏 -->
+        <LinearLayout
+            android:id="@+id/emptyAddState"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="18dp"
+                android:text="还没有订阅源"
+                android:textColor="#9AA0A6"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnManualAdd"
+                android:layout_width="200dp"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_loading_pill"
+                android:drawableStart="@drawable/ic_add_24"
+                android:drawableTint="@color/white"
+                android:drawablePadding="6dp"
+                android:stateListAnimator="@null"
+                android:text="手动添加"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnScanAdd"
+                android:layout_width="200dp"
+                android:layout_height="42dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_loading_pill"
+                android:stateListAnimator="@null"
+                android:text="扫一扫添加"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

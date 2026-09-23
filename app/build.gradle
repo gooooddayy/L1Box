@@ -1,0 +1,182 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    compileSdkVersion 33
+    buildToolsVersion '33.0.2'
+
+    defaultConfig {
+        applicationId 'com.github.tvbox.osc'
+        minSdkVersion 24
+        // targetSdk 保持 28（同官方 TVBox/jun 变体）：Android 10+ 对 targetSdk>=29 强制
+        // W^X 限制，加固 jar 解密后的内层 dex 写在可写目录，>=29 时加载偶发被系统拒绝，
+        // 触发加固层自检失败自杀（日志铁证: Attempt to load writable dex file）。
+        // 本应用为侧载分发不上架商店，28 是加固 jar 兼容性最优解。
+        targetSdkVersion 28
+        versionCode 31
+        versionName '1.1.1'
+        multiDexEnabled true
+        // 矢量图走兼容库, 避免部分老设备/定制 ROM 上渲染异常
+        vectorDrawables.useSupportLibrary = true
+        //设置room的Schema的位置
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
+
+        // 仅打包 ARM 架构（armeabi-v7a 覆盖老设备, arm64-v8a 覆盖主流设备）
+        // 本项目 native 库无 x86/x86_64, 第三方 AAR 的 x86 包对手机/TV 盒子无用, 限定后可显著缩小体积、降低安装失败率
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+
+    }
+
+    // 执行配置
+    applicationVariants.all { variant ->
+
+        // Apk 输出配置
+        variant.outputs.all { output ->
+            outputFileName = 'L1Box_v' + variant.versionName + '_' + variant.buildType.name
+            if (variant.buildType.name == buildTypes.release.getName()) {
+                outputFileName += '_' + new Date().format("yyyyMMdd")
+            }
+            outputFileName += '.apk'
+        }
+    }
+
+    // (packagingOptions 已合并至下方统一声明)
+
+    signingConfigs {
+        config {
+            keyAlias 'TVBoxOSC'
+            keyPassword 'TVBoxOSC'
+            storeFile file('..\\TVBoxOSC.jks')
+            storePassword 'TVBoxOSC'
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.config
+        }
+
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.config
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+    buildFeatures {
+        viewBinding true
+    }
+
+    // 统一排除重复元数据与 dlna-cast 冲突文件
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/beans.xml'
+        // 第三方库随包携带的版本标记与说明文档，运行时完全不需要，仅占体积
+        exclude 'META-INF/*.version'
+        exclude 'META-INF/CHANGES'
+        exclude 'META-INF/README.md'
+        exclude 'META-INF/LICENSE*'
+        exclude 'META-INF/NOTICE*'
+        exclude 'META-INF/*.kotlin_module.md5'
+    }
+}
+
+dependencies {
+    api fileTree(dir: "libs", include: ['*.jar', '*.aar'])
+
+    implementation 'com.google.android.material:material:1.4.0'
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.5.31"
+    implementation 'androidx.core:core-ktx:1.6.0'
+
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    implementation 'com.google.zxing:core:3.4.1'
+    // 扫一扫(二维码)添加订阅源: 自带相机 CaptureActivity, targetSdk30 下无需手动声明 exported
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'androidx.appcompat:appcompat:1.3.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+    implementation 'androidx.recyclerview:recyclerview:1.2.1'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.0.0'
+    implementation files('libs/thunder.jar')
+    implementation files('libs/commons-lang3-3.12.0.jar')
+    // 已移除 org.conscrypt:conscrypt-android:2.5.2 —— 全工程（含 player 模块与 libs/ 下三方 jar）
+    // 均无任何调用，HTTPS 走 Android 系统自带 TLS 实现即可，移除后节省约 3.2MB native 库。
+    // 若日后确需自定义 TLS Provider，需连同安全评审一并恢复。
+
+    implementation 'com.squareup.okhttp3:okhttp:3.12.11'
+    annotationProcessor 'androidx.room:room-compiler:2.3.0'
+    implementation 'androidx.room:room-runtime:2.3.0'
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'com.squareup.okio:okio:2.8.0'
+    implementation 'com.github.CymChad:BaseRecyclerViewAdapterHelper:2.9.45-androidx'
+    implementation 'com.kingja.loadsir:loadsir:1.3.8'
+    implementation 'com.google.code.gson:gson:2.8.7'
+    implementation 'com.squareup.picasso:picasso:2.71828'
+    implementation 'com.github.JessYanCoding:AndroidAutoSize:v1.2.1'
+    implementation('com.thoughtworks.xstream:xstream:1.4.15') {
+        exclude group: 'xmlpull', module: 'xmlpull'
+    }
+    implementation 'org.greenrobot:eventbus:3.2.0'
+    implementation 'com.orhanobut:hawk:2.0.1'
+
+    implementation project(":player")
+    implementation project(":quickjs")
+    implementation 'net.sourceforge.streamsupport:android-retrofuture:1.7.4'
+
+    implementation 'com.lzy.net:okgo:3.0.4'
+    // implementation 'com.tencent.bugly:crashreport_upgrade:latest.release'
+    implementation 'com.owen:tv-recyclerview:3.0.0'
+
+    implementation 'com.github.getActivity:XXPermissions:13.6'
+    implementation 'org.jsoup:jsoup:1.14.1'
+    implementation 'com.github.hedzr:android-file-chooser:v1.2.0-final'
+    implementation 'commons-io:commons-io:2.11.0'
+    implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3'
+
+    //沉浸式状态栏
+    implementation 'com.geyifeng.immersionbar:immersionbar:3.2.2'
+    //标题栏
+    implementation 'com.github.getActivity:TitleBar:10.5'
+    //弹窗
+    implementation 'com.github.li-xiaojun:XPopup:2.10.0'
+    //工具类
+    implementation 'com.blankj:utilcodex:1.31.0'
+    //阴影/shape/选择器/圆角/...
+    implementation 'com.github.lihangleo2:ShadowLayout:3.3.3'
+    //glide图片加载
+    implementation 'com.github.bumptech.glide:glide:4.12.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.12.0'
+
+    //tab标题栏
+    implementation project(":TabLayout")
+    implementation project(':ViewPager1Delegate')
+    //TabLayout的非kt项目需要依赖这个包实现点击事件等
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    //展开收缩tv
+    implementation 'com.github.MZCretin:ExpandableTextView:v1.6.1-x'
+    //lottie动画
+    implementation 'com.airbnb.android:lottie:5.2.0'
+    //流式布局
+    implementation 'com.hyman:flowlayout-lib:1.1.2'
+    //崩溃
+    implementation project(":crash")
+    // Lifecycles only (without ViewModel or LiveData)
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.2.0"
+}

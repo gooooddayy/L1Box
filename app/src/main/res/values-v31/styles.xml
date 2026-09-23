@@ -1,0 +1,12 @@
+<resources>
+
+    <!-- Android 12+ 系统启动画面：隐藏图标、背景用启动绿，避免与自绘渐变出现两次图标闪现 -->
+    <style name="SplashTheme" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/bg_splash</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">false</item>
+        <item name="android:windowSplashScreenBackground">@color/green_gradient_start</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+
+</resources>

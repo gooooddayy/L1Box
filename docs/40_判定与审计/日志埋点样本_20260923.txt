@@ -1,0 +1,835 @@
+# 原始日志关键埋点提取（删除前固化）
+
+
+## _bl_host.log
+
+计数：POOL=2 / SEARCH_END=1 / SEG_ROUND=1
+
+- **SEARCH_END** 样本：
+    - `09-19 17:40:57.933 I/System.out(31128): 搜索收尾：0 结果且判定为真空（站点池定论=true jar装载序号=0->0 自动重搜=0），给出空态`
+- **POOL** 样本：
+    - `09-19 17:40:54.532 I/System.out(31128): 搜索轮次：可搜站点=36 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 17:40:57.933 I/System.out(31128): 搜索收尾：0 结果且判定为真空（站点池定论=true jar装载序号=0->0 自动重搜=0），给出空态`
+- **SEG_ROUND** 样本：
+    - `09-19 17:40:54.532 I/System.out(31128): 搜索轮次：可搜站点=36 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bm_host.log
+
+计数：POOL=28 / SEARCH_END=4 / SEG_ROUND=24
+
+- **SEARCH_END** 样本：
+    - `09-19 19:56:37.886 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->41），自动重搜第 1 次`
+    - `09-19 19:56:43.267 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->43），自动重搜第 1 次`
+    - `09-19 19:56:49.110 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->45），自动重搜第 1 次`
+- **POOL** 样本：
+    - `09-19 19:50:34.090 I/System.out( 8917): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:52:05.453 I/System.out(11097): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:53:38.276 I/System.out(12129): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **SEG_ROUND** 样本：
+    - `09-19 19:50:34.090 I/System.out( 8917): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:52:05.453 I/System.out(11097): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:53:38.276 I/System.out(12129): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bm_window.log
+
+计数：POOL=20 / SEARCH_END=4 / SEG_ROUND=16
+
+- **SEARCH_END** 样本：
+    - `09-19 19:56:37.886 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->41），自动重搜第 1 次`
+    - `09-19 19:56:43.267 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->43），自动重搜第 1 次`
+    - `09-19 19:56:49.110 I/System.out(12945): 搜索收尾：0 结果但与初始化重叠（站点池定论=true jar装载序号=0->45），自动重搜第 1 次`
+- **POOL** 样本：
+    - `09-19 19:50:34.090 I/System.out( 8917): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:52:05.453 I/System.out(11097): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:53:38.276 I/System.out(12129): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **SEG_ROUND** 样本：
+    - `09-19 19:50:34.090 I/System.out( 8917): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:52:05.453 I/System.out(11097): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-19 19:53:38.276 I/System.out(12129): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_a1_host.log
+
+计数：DoH_FAIL=5 / DoH_STAT=2 / INIT_HINT=4 / POOL=3 / SEG_ROUND=3 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 18:38:28.200 W/L1Dns   (11798): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+    - `09-22 18:38:36.685 I/System.out(11798): 搜索耗时：收尾 站点=40 命中=20 首条=508ms 总耗时=9190ms 本轮装载增量=39 DNS(窗口内):DoH命中=39 失败=3 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+
+
+## _bn_a1_host2.log
+
+计数：DoH_FAIL=17 / DoH_STAT=10 / INIT_HINT=17 / POOL=10 / SEG_ROUND=10 / SQLITE=64
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 18:38:28.200 W/L1Dns   (11798): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+    - `09-22 18:38:36.685 I/System.out(11798): 搜索耗时：收尾 站点=40 命中=20 首条=508ms 总耗时=9190ms 本轮装载增量=39 DNS(窗口内):DoH命中=39 失败=3 熔断跳过=0 直连=7`
+    - `09-22 18:39:57.966 I/System.out(14241): 搜索耗时：收尾 站点=40 命中=26 首条=1655ms 总耗时=12979ms 本轮装载增量=40 DNS(窗口内):DoH命中=69 失败=2 熔断跳过=0 直连=2087`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+
+
+## _bn_a8_host.log
+
+计数：DoH_FAIL=2 / DoH_STAT=5 / INIT_HINT=7 / POOL=5 / SEG_ROUND=5 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
+    - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
+    - `09-22 17:46:02.494 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=57ms 总耗时=2731ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 17:45:13.106 I/WexProgress(12297): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:21.081 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:29.277 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+
+
+## _bn_bo_test_host.log
+
+计数：DoH_FAIL=10 / DoH_STAT=4 / INIT_HINT=12 / POOL=3 / SEG_ROUND=3 / SQLITE=40
+
+- **SQLITE** 样本：
+    - `09-22 20:15:06.966 E/SQLiteDatabase(23023): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 20:15:06.966 E/SQLiteDatabase(23023): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 20:15:02.962 W/L1Dns   (23023): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 20:15:03.188 W/L1Dns   (23023): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 20:15:05.163 W/L1Dns   (23023): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 20:15:09.234 I/System.out(23023): 搜索耗时：收尾 站点=40 命中=244 首条=2723ms 总耗时=10561ms 本轮装载增量=40 DNS(窗口内):DoH命中=61 失败=3 熔断跳过=0 直连=1634`
+    - `09-22 20:15:57.329 I/System.out(24030): 搜索耗时：收尾 站点=40 命中=244 首条=2354ms 总耗时=24624ms 本轮装载增量=40 DNS(窗口内):DoH命中=60 失败=2 熔断跳过=0 直连=1930`
+    - `09-22 20:16:29.958 I/System.out(24730): 搜索耗时：收尾 站点=40 命中=244 首条=12552ms 总耗时=24069ms 本轮装载增量=40 DNS(窗口内):DoH命中=63 失败=2 熔断跳过=0 直连=2085`
+- **POOL** 样本：
+    - `09-22 20:14:58.675 I/System.out(23023): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:15.993 I/System.out(24730): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:47.048 I/System.out(25903): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 20:14:57.942 I/WexProgress(23023): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 20:15:00.722 I/WexProgress(23023): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 20:15:32.418 I/WexProgress(24030): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 20:14:58.675 I/System.out(23023): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:15.993 I/System.out(24730): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:47.048 I/System.out(25903): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_host.log
+
+计数：DoH_FAIL=2 / DoH_STAT=11 / INIT_HINT=5 / POOL=14 / SEARCH_END=3 / SEG_ROUND=11 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_FAIL** 样本：
+    - `09-22 16:10:40.249 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 16:10:41.227 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:49:29.765 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
+
+
+## _bn_host2.log
+
+计数：DoH_FAIL=2 / DoH_STAT=11 / INIT_HINT=5 / POOL=14 / SEARCH_END=3 / SEG_ROUND=11 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_FAIL** 样本：
+    - `09-22 16:10:40.249 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 16:10:41.227 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:49:29.765 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
+
+
+## _bn_host_prev.log
+
+计数：DoH_FAIL=8 / DoH_STAT=4 / INIT_HINT=6 / POOL=3 / SEG_ROUND=3 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
+    - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:02:27.620 I/System.out(16774): 搜索耗时：收尾 站点=40 命中=244 首条=56ms 总耗时=7099ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=11`
+    - `09-22 15:03:52.234 I/System.out(19035): 搜索耗时：收尾 站点=40 命中=244 首条=2574ms 总耗时=18583ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=2169`
+    - `09-22 15:05:05.872 I/System.out(20093): 搜索耗时：收尾 站点=40 命中=244 首条=2201ms 总耗时=10980ms 本轮装载增量=40 DNS(窗口内):DoH命中=24 失败=14 熔断跳过=28 直连=1883`
+- **POOL** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 15:03:29.433 I/WexProgress(18863): attached activity=com.github.tvbox.osc.ui.activity.SettingActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 15:03:31.962 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:03:34.529 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bq_seg1.log
+
+计数：DoH_FAIL=3 / DoH_STAT=1 / INIT_HINT=2 / POOL=1 / SEG_ROUND=1 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 21:53:15.887 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:15.895 W/L1Dns   (28504): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:18.354 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 21:53:30.348 I/System.out(28504): 搜索耗时：收尾 站点=40 命中=26 首条=1775ms 总耗时=18115ms 本轮装载增量=40 DNS(窗口内):DoH命中=70 失败=3 熔断跳过=0 直连=2110`
+- **POOL** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 21:53:05.908 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 21:53:13.034 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bq_seg1_devdump.log
+
+计数：DoH_FAIL=3 / DoH_STAT=1 / INIT_HINT=2 / POOL=1 / SEG_ROUND=1 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 21:53:15.887 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:15.895 W/L1Dns   (28504): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:18.354 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 21:53:30.348 I/System.out(28504): 搜索耗时：收尾 站点=40 命中=26 首条=1775ms 总耗时=18115ms 本轮装载增量=40 DNS(窗口内):DoH命中=70 失败=3 熔断跳过=0 直连=2110`
+- **POOL** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 21:53:05.908 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 21:53:13.034 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/a1_phase1.log
+
+计数：DoH_FAIL=2 / DoH_STAT=1 / INIT_HINT=2 / POOL=2 / SEG_ROUND=2 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+
+
+## _bn_seg/a1_phase2.log
+
+计数：DoH_FAIL=2 / DoH_STAT=1 / INIT_HINT=3 / POOL=2 / SEG_ROUND=2 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+
+
+## _bn_seg/a4_cacheoff.log
+
+计数：DoH_FAIL=7 / DoH_STAT=6 / INIT_HINT=5 / POOL=7 / SEG_ROUND=7 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 18:38:28.200 W/L1Dns   (11798): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+    - `09-22 18:38:36.685 I/System.out(11798): 搜索耗时：收尾 站点=40 命中=20 首条=508ms 总耗时=9190ms 本轮装载增量=39 DNS(窗口内):DoH命中=39 失败=3 熔断跳过=0 直连=7`
+    - `09-22 18:39:57.966 I/System.out(14241): 搜索耗时：收尾 站点=40 命中=26 首条=1655ms 总耗时=12979ms 本轮装载增量=40 DNS(窗口内):DoH命中=69 失败=2 熔断跳过=0 直连=2087`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+
+
+## _bn_seg/a8_block1_bn_doh_off.log
+
+计数：DoH_STAT=3 / INIT_HINT=3 / POOL=3 / SEG_ROUND=3 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_STAT** 样本：
+    - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
+    - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
+    - `09-22 17:46:02.494 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=57ms 总耗时=2731ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 17:45:13.106 I/WexProgress(12297): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:21.081 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:29.277 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+
+
+## _bn_seg/a8_block2_bn_doh_on.log
+
+计数：DoH_FAIL=2 / DoH_STAT=5 / INIT_HINT=7 / POOL=5 / SEG_ROUND=5 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
+    - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
+    - `09-22 17:46:02.494 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=57ms 总耗时=2731ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 17:45:13.106 I/WexProgress(12297): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:21.081 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:29.277 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+
+
+## _bn_seg/a8_block2r_bn_doh_on_cold.log
+
+计数：DoH_FAIL=2 / DoH_STAT=8 / INIT_HINT=8 / POOL=11 / SEARCH_END=3 / SEG_ROUND=8 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 17:50:46.667 I/System.out(16491): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 17:50:47.317 I/System.out(16491): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 17:50:47.963 I/System.out(16491): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_FAIL** 样本：
+    - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
+    - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
+    - `09-22 17:46:02.494 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=57ms 总耗时=2731ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 17:45:13.106 I/WexProgress(12297): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:21.081 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:29.277 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+
+
+## _bn_seg/a8_seg1_bn_doh_on_x3.log
+
+计数：DoH_FAIL=7 / DoH_STAT=11 / INIT_HINT=14 / POOL=13 / SEARCH_END=3 / SEG_ROUND=10 / SQLITE=40
+
+- **SQLITE** 样本：
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 17:50:46.667 I/System.out(16491): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 17:50:47.317 I/System.out(16491): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 17:50:47.963 I/System.out(16491): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_FAIL** 样本：
+    - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+    - `09-22 17:56:47.292 W/L1Dns   (18185): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
+    - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
+    - `09-22 17:46:02.494 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=57ms 总耗时=2731ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=7`
+- **POOL** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 17:45:13.106 I/WexProgress(12297): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:21.081 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 17:45:29.277 I/WexProgress(13054): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 17:45:28.476 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 17:45:46.696 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 17:45:59.764 I/System.out(13054): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=41 自动重搜=0`
+
+
+## _bn_seg/a_c26_final.log
+
+计数：DoH_FAIL=7 / DoH_STAT=5 / INIT_HINT=5 / POOL=6 / SEG_ROUND=6 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 18:38:28.200 W/L1Dns   (11798): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+    - `09-22 18:38:36.685 I/System.out(11798): 搜索耗时：收尾 站点=40 命中=20 首条=508ms 总耗时=9190ms 本轮装载增量=39 DNS(窗口内):DoH命中=39 失败=3 熔断跳过=0 直连=7`
+    - `09-22 18:39:57.966 I/System.out(14241): 搜索耗时：收尾 站点=40 命中=26 首条=1655ms 总耗时=12979ms 本轮装载增量=40 DNS(窗口内):DoH命中=69 失败=2 熔断跳过=0 直连=2087`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+
+
+## _bn_seg/a_c26_final2.log
+
+计数：DoH_FAIL=7 / DoH_STAT=5 / INIT_HINT=5 / POOL=6 / SEG_ROUND=6 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 18:24:03.215 E/SQLiteDatabase( 6436): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 18:23:59.056 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 18:23:59.285 W/L1Dns   ( 6436): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 18:38:28.200 W/L1Dns   (11798): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 18:25:35.022 I/System.out( 6436): 搜索耗时：超时收尾 站点=40 命中=226 首条=88ms 总耗时=30005ms 本轮装载增量=2 DNS(窗口内):DoH命中=8 失败=0 熔断跳过=0 直连=6`
+    - `09-22 18:38:36.685 I/System.out(11798): 搜索耗时：收尾 站点=40 命中=20 首条=508ms 总耗时=9190ms 本轮装载增量=39 DNS(窗口内):DoH命中=39 失败=3 熔断跳过=0 直连=7`
+    - `09-22 18:39:57.966 I/System.out(14241): 搜索耗时：收尾 站点=40 命中=26 首条=1655ms 总耗时=12979ms 本轮装载增量=40 DNS(窗口内):DoH命中=69 失败=2 熔断跳过=0 直连=2087`
+- **POOL** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 18:23:56.055 I/WexProgress( 6436): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 18:23:57.801 I/WexProgress( 6436): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 18:32:35.143 I/WexProgress(11798): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 18:23:56.105 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 18:25:05.018 I/System.out( 6436): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 18:38:27.496 I/System.out(11798): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=2 自动重搜=0`
+
+
+## _bn_seg/bo_retest1.log
+
+计数：DoH_FAIL=10 / DoH_STAT=4 / INIT_HINT=12 / POOL=3 / SEG_ROUND=3 / SQLITE=40
+
+- **SQLITE** 样本：
+    - `09-22 20:15:06.966 E/SQLiteDatabase(23023): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 20:15:06.966 E/SQLiteDatabase(23023): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 20:15:02.962 W/L1Dns   (23023): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 20:15:03.188 W/L1Dns   (23023): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+    - `09-22 20:15:05.163 W/L1Dns   (23023): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 20:15:09.234 I/System.out(23023): 搜索耗时：收尾 站点=40 命中=244 首条=2723ms 总耗时=10561ms 本轮装载增量=40 DNS(窗口内):DoH命中=61 失败=3 熔断跳过=0 直连=1634`
+    - `09-22 20:15:57.329 I/System.out(24030): 搜索耗时：收尾 站点=40 命中=244 首条=2354ms 总耗时=24624ms 本轮装载增量=40 DNS(窗口内):DoH命中=60 失败=2 熔断跳过=0 直连=1930`
+    - `09-22 20:16:29.958 I/System.out(24730): 搜索耗时：收尾 站点=40 命中=244 首条=12552ms 总耗时=24069ms 本轮装载增量=40 DNS(窗口内):DoH命中=63 失败=2 熔断跳过=0 直连=2085`
+- **POOL** 样本：
+    - `09-22 20:14:58.675 I/System.out(23023): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:15.993 I/System.out(24730): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:47.048 I/System.out(25903): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 20:14:57.942 I/WexProgress(23023): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 20:15:00.722 I/WexProgress(23023): attached activity=com.github.tvbox.osc.ui.activity.FastSearchActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 20:15:32.418 I/WexProgress(24030): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 20:14:58.675 I/System.out(23023): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:15.993 I/System.out(24730): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 20:16:47.048 I/System.out(25903): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/bq_seg1_2147_2154.log
+
+计数：DoH_FAIL=3 / DoH_STAT=1 / INIT_HINT=2 / POOL=1 / SEG_ROUND=1 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 21:53:22.600 E/SQLiteDatabase(28504): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 21:53:15.887 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:15.895 W/L1Dns   (28504): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 21:53:18.354 W/L1Dns   (28504): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 21:53:30.348 I/System.out(28504): 搜索耗时：收尾 站点=40 命中=26 首条=1775ms 总耗时=18115ms 本轮装载增量=40 DNS(窗口内):DoH命中=70 失败=3 熔断跳过=0 直连=2110`
+- **POOL** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 21:53:05.908 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 21:53:13.034 I/WexProgress(28504): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 21:53:12.235 I/System.out(28504): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/pre_retest_buffer.log
+
+计数：DoH_FAIL=8 / DoH_STAT=4 / INIT_HINT=6 / POOL=3 / SEG_ROUND=3 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
+    - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:02:27.620 I/System.out(16774): 搜索耗时：收尾 站点=40 命中=244 首条=56ms 总耗时=7099ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=11`
+    - `09-22 15:03:52.234 I/System.out(19035): 搜索耗时：收尾 站点=40 命中=244 首条=2574ms 总耗时=18583ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=2169`
+    - `09-22 15:05:05.872 I/System.out(20093): 搜索耗时：收尾 站点=40 命中=244 首条=2201ms 总耗时=10980ms 本轮装载增量=40 DNS(窗口内):DoH命中=24 失败=14 熔断跳过=28 直连=1883`
+- **POOL** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 15:03:29.433 I/WexProgress(18863): attached activity=com.github.tvbox.osc.ui.activity.SettingActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 15:03:31.962 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:03:34.529 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/seg1_lengqi.log
+
+计数：DoH_FAIL=8 / DoH_STAT=4 / INIT_HINT=6 / POOL=3 / SEG_ROUND=3 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
+    - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:02:27.620 I/System.out(16774): 搜索耗时：收尾 站点=40 命中=244 首条=56ms 总耗时=7099ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=11`
+    - `09-22 15:03:52.234 I/System.out(19035): 搜索耗时：收尾 站点=40 命中=244 首条=2574ms 总耗时=18583ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=2169`
+    - `09-22 15:05:05.872 I/System.out(20093): 搜索耗时：收尾 站点=40 命中=244 首条=2201ms 总耗时=10980ms 本轮装载增量=40 DNS(窗口内):DoH命中=24 失败=14 熔断跳过=28 直连=1883`
+- **POOL** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 15:03:29.433 I/WexProgress(18863): attached activity=com.github.tvbox.osc.ui.activity.SettingActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 15:03:31.962 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:03:34.529 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/seg_all_4.log
+
+计数：DoH_FAIL=8 / DoH_STAT=4 / INIT_HINT=6 / POOL=3 / SEG_ROUND=3 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
+    - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:02:27.620 I/System.out(16774): 搜索耗时：收尾 站点=40 命中=244 首条=56ms 总耗时=7099ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=11`
+    - `09-22 15:03:52.234 I/System.out(19035): 搜索耗时：收尾 站点=40 命中=244 首条=2574ms 总耗时=18583ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=2169`
+    - `09-22 15:05:05.872 I/System.out(20093): 搜索耗时：收尾 站点=40 命中=244 首条=2201ms 总耗时=10980ms 本轮装载增量=40 DNS(窗口内):DoH命中=24 失败=14 熔断跳过=28 直连=1883`
+- **POOL** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 15:03:29.433 I/WexProgress(18863): attached activity=com.github.tvbox.osc.ui.activity.SettingActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 15:03:31.962 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:03:34.529 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/seg_all_4b.log
+
+计数：DoH_FAIL=8 / DoH_STAT=4 / INIT_HINT=6 / POOL=3 / SEG_ROUND=3 / SQLITE=24
+
+- **SQLITE** 样本：
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **DoH_FAIL** 样本：
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
+    - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:02:27.620 I/System.out(16774): 搜索耗时：收尾 站点=40 命中=244 首条=56ms 总耗时=7099ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=11`
+    - `09-22 15:03:52.234 I/System.out(19035): 搜索耗时：收尾 站点=40 命中=244 首条=2574ms 总耗时=18583ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=2169`
+    - `09-22 15:05:05.872 I/System.out(20093): 搜索耗时：收尾 站点=40 命中=244 首条=2201ms 总耗时=10980ms 本轮装载增量=40 DNS(窗口内):DoH命中=24 失败=14 熔断跳过=28 直连=1883`
+- **POOL** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+- **INIT_HINT** 样本：
+    - `09-22 15:03:29.433 I/WexProgress(18863): attached activity=com.github.tvbox.osc.ui.activity.SettingActivity, root=androidx.appcompat.widget.ContentFrameLayout, msg=正在初始化本地代理`
+    - `09-22 15:03:31.962 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:03:34.529 I/WexProgress(19035): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:02:20.522 I/System.out(16774): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=40 自动重搜=0`
+    - `09-22 15:03:33.653 I/System.out(19035): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+    - `09-22 15:05:25.862 I/System.out(21389): 搜索轮次：可搜站点=40 站点池定论=true jar装载序号=0 自动重搜=0`
+
+
+## _bn_seg/seg_final.log
+
+计数：DoH_FAIL=2 / DoH_STAT=11 / INIT_HINT=5 / POOL=14 / SEARCH_END=3 / SEG_ROUND=11 / SQLITE=16
+
+- **SQLITE** 样本：
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_FAIL** 样本：
+    - `09-22 16:10:40.249 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
+    - `09-22 16:10:41.227 W/L1Dns   (13102): DoH 失败，已回退系统DNS：api.<订阅源B>.com 原因=UnknownHostException`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:49:29.765 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
+
+
+## _bn_seg/seg_r2_search_fail.log
+
+计数：DoH_STAT=3 / INIT_HINT=2 / POOL=6 / SEARCH_END=3 / SEG_ROUND=3
+
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
+
+
+## _bn_seg/seg_r2_seg2.log
+
+计数：DoH_STAT=4 / INIT_HINT=3 / POOL=7 / SEARCH_END=3 / SEG_ROUND=4 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:49:29.765 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
+
+
+## _bn_seg/seg_r2_seg3.log
+
+计数：DoH_STAT=8 / INIT_HINT=3 / POOL=11 / SEARCH_END=3 / SEG_ROUND=8 / SQLITE=8
+
+- **SQLITE** 样本：
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
+    - `09-22 15:49:36.378 E/SQLiteDatabase( 1472): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
+- **SEARCH_END** 样本：
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 2 次`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
+- **DoH_STAT** 样本：
+    - `09-22 15:41:45.685 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=7ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=4ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索耗时：无可搜站点 站点=0 命中=0 首条=无 总耗时=6ms 本轮装载增量=0 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=0`
+- **POOL** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:45.686 I/System.out( 1472): 搜索收尾：0 结果但与初始化重叠（站点池定论=false jar装载序号=0->0），自动重搜第 1 次`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+- **INIT_HINT** 样本：
+    - `09-22 15:40:57.549 I/WexProgress(32747): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:41:51.058 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+    - `09-22 15:49:29.765 I/WexProgress( 1472): attach skip activity=null retry=0, showing=true, msg=正在初始化本地代理`
+- **SEG_ROUND** 样本：
+    - `09-22 15:41:45.684 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=0`
+    - `09-22 15:41:46.348 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=1`
+    - `09-22 15:41:47.005 I/System.out( 1472): 搜索轮次：可搜站点=0 站点池定论=false jar装载序号=0/0 等待次数=10 自动重搜=2`
