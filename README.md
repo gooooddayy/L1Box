@@ -1,6 +1,6 @@
 # L1Box
 
-基于 [TVBoxOSC](https://github.com/q215613905/TVBoxOSC) 的 **竖屏手机版** fork。
+基于 [BoxOSC](https://github.com/q215613905/TVBoxOSC) 的 **竖屏手机版** fork。
 
 在保留原有影视聚合能力的基础上，针对**手机竖屏**使用场景做了大量体验与稳定性改造：
 竖屏布局与手势、播放器作用域与内核选择、搜索链路可靠性、订阅源解析容错、播放起播与缓冲控制等。
@@ -68,5 +68,5 @@ docs/                开发过程文档（方案、验证记录、踩坑）
 
 ## 致谢
 
-- [TVBoxOSC](https://github.com/q215613905/TVBoxOSC)
+- [BoxOSC](https://github.com/q215613905/TVBoxOSC)
 - [dkplayer](https://github.com/Doikki/DKVideoPlayer)
