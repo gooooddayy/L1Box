@@ -6,8 +6,8 @@
 # 设备侧环形缓冲已扩到 64 MiB（`adb logcat -G 64M`，默认只有 256 KiB＝一分钟就被噪声刷满），
 # 所以 `logcat -d` 一次性 dump 能把**整段**拿回来——不依赖 grep 实时流。
 
-export PATH="/c/Users/Administrator/.workbuddy/binaries/PortableGit/versions/1.2.0/usr/bin:/usr/bin:/bin:$PATH"
-ADB="/c/Users/Administrator/AppData/Local/Android/Sdk/platform-tools/adb.exe"
+export PATH="<本机>/.workbuddy/binaries/PortableGit/versions/1.2.0/usr/bin:/usr/bin:/bin:$PATH"
+ADB="<本机>/AppData/Local/Android/Sdk/platform-tools/adb.exe"
 cd "$(dirname "$0")" || exit 1
 
 NAME="${1:-seg_$(date +%H%M%S)}"

@@ -248,7 +248,6 @@ public class App extends MultiDexApplication {
         putDefault(HawkConfig.DOH_URL, OkGoHelper.DEFAULT_DOH);
         upgradeDohDefault();
         putDefault(HawkConfig.PLAY_SCALE, 0);                //画面缩放: 0=默认, 1=16:9, 2=4:3, 3=填充, 4=原始, 5=裁剪
-        putDefault(HawkConfig.HISTORY_NUM, 2);                //历史记录数量: 0=30, 1=50, 2=70
         putDefaultApi();
     }
 

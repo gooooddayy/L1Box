@@ -267,7 +267,7 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
                     setupHomeTitle()
                     ToastUtils.showShort("已切换线路,搜索将使用该线路的站点")
                     reloadSitePool()
-                }.setTitle("切换影视线路")
+                }.setCurrentUrl(active.activeLineUrl).setTitle("切换影视线路")
             ).show()
     }
 
@@ -820,7 +820,7 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
     private fun queryHistory() {
         lifecycleScope.launch {
             val vodInfoList = withContext(Dispatchers.IO) {
-                val allVodRecord = RoomDataManger.getAllVodRecord(100)
+                val allVodRecord = RoomDataManger.getAllVodRecord()
                 val vodInfoList: MutableList<VodInfo?> = ArrayList()
                 for (vodInfo in allVodRecord) {
                     if (vodInfo.playNote != null && !vodInfo.playNote.isEmpty()) vodInfo.note =

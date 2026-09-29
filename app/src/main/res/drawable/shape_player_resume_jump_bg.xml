@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 续播跳转提示背景：半透明淡绿圆角面板。
+     刻意**不复用** shape_player_next_tip_bg —— 那个是"下一集倒计时"浮层与它共用的，
+     连播是"深色面板 + 倒计时 + 两个按钮"，续播只是"轻轻问一句"，
+     两者视觉定位不同，共用一个背景会让任一侧改色时连带改掉另一边。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#73A5D6A7" />
+    <corners android:radius="8dp" />
+</shape>

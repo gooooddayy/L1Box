@@ -16,7 +16,6 @@ import com.github.tvbox.osc.ui.dialog.SelectDialog
 import com.github.tvbox.osc.util.FastClickCheckUtil
 import com.github.tvbox.osc.util.FileUtils
 import com.github.tvbox.osc.util.HawkConfig
-import com.github.tvbox.osc.util.HistoryHelper
 import com.github.tvbox.osc.util.OkGoHelper
 import com.github.tvbox.osc.util.PlayerHelper
 import com.github.tvbox.osc.util.Utils
@@ -43,8 +42,7 @@ class SettingActivity : BaseVbActivity<ActivitySettingBinding>() {
 
         mBinding.tvDns.text = OkGoHelper.dnsHttpsList[Hawk.get(HawkConfig.DOH_URL, OkGoHelper.DEFAULT_DOH)]
         // 主页内容固定显示豆瓣热播 - 设置项已移除
-        mBinding.tvHistoryNum.text =
-            HistoryHelper.getHistoryNumName(Hawk.get(HawkConfig.HISTORY_NUM, 0))
+        // 保留历史记录条数已固定为 50（HistoryHelper.HIS_NUM），选择器设置项已移除
         mBinding.tvScaleType.text = PlayerHelper.getScaleName(Hawk.get(HawkConfig.PLAY_SCALE, 0))
         // 默认播放器：装了的外部播放器照常可选，只有"配置指向一个本机没有的播放器"（外部已卸载、
         // 换设备后配置同步过来）才落回 Exo 并写回，免得这里显示一个已经点不动的项。
@@ -258,36 +256,8 @@ class SettingActivity : BaseVbActivity<ActivitySettingBinding>() {
             dialog.show()
         }
         // 主页内容已固定豆瓣热播,设置项移除
+        // 历史记录条数已固定 50 条，无需再选，选择器设置项移除
 
-        mBinding.llHistoryNum.setOnClickListener { v: View? ->
-            FastClickCheckUtil.check(v)
-            val defaultPos = Hawk.get(HawkConfig.HISTORY_NUM, 0)
-            val types = ArrayList<Int>()
-            types.add(0)
-            types.add(1)
-            types.add(2)
-            val dialog = SelectDialog<Int>(this@SettingActivity)
-            dialog.setTip("保留历史记录数量")
-            dialog.setAdapter(object : SelectDialogInterface<Int?> {
-                override fun click(value: Int?, pos: Int) {
-                    Hawk.put(HawkConfig.HISTORY_NUM, value)
-                    mBinding.tvHistoryNum.text = HistoryHelper.getHistoryNumName(value?:0)
-                }
-
-                override fun getDisplay(value: Int?): String {
-                    return HistoryHelper.getHistoryNumName(value?:0)
-                }
-            }, object : DiffUtil.ItemCallback<Int>() {
-                override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
-                    return oldItem == newItem
-                }
-
-                override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
-                    return oldItem == newItem
-                }
-            }, types, defaultPos)
-            dialog.show()
-        }
         mBinding.llClearCache.setOnClickListener { view: View ->
             XPopup.Builder(this)
                 .isDarkTheme(Utils.isDarkTheme())
@@ -297,22 +267,7 @@ class SettingActivity : BaseVbActivity<ActivitySettingBinding>() {
                 ) { onClickFactoryReset(view) }.show()
         }
 
-        // 导出崩溃日志：最新一份复制到 /sdcard/L1Box_crash_log.txt，便于反馈排障
-        mBinding.tvCrashLog.text = if (com.github.tvbox.osc.util.CrashLog.hasCrash()) "有记录" else "无记录"
-        mBinding.llCrashLog.setOnClickListener { v: View ->
-            FastClickCheckUtil.check(v)
-            Thread {
-                val path = com.github.tvbox.osc.util.CrashLog.exportLatest()
-                runOnUiThread {
-                    if (path != null) {
-                        mBinding.tvCrashLog.text = "已导出"
-                        ToastUtils.showLong("已导出到 $path")
-                    } else {
-                        ToastUtils.showLong(if (com.github.tvbox.osc.util.CrashLog.hasCrash()) "导出失败，请检查存储权限" else "暂无崩溃记录")
-                    }
-                }
-            }.start()
-        }
+        // 崩溃日志仍照常落盘（util/CrashLog），只是不再提供"导出"入口
         // 主题设置入口已移除：App 固定浅色（Utils.initTheme 强制 MODE_NIGHT_NO）
 
         mBinding.switchVideoPurify.setChecked(Hawk.get(HawkConfig.VIDEO_PURIFY, true))

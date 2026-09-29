@@ -1487,9 +1487,13 @@ open class DslTabLayout(
     //手势检测
     val _gestureDetector: GestureDetectorCompat by lazy {
         GestureDetectorCompat(context, object : GestureDetector.SimpleOnGestureListener() {
+            // bw（2026-09-24）：参数必须**可空**。Android 在 ACTION_CANCEL 之后会把内部的 down 事件
+            // 置 null，随后**同一批**（日志里的 nativeConsumeBatchedInputEvents）的 MOVE 事件仍会调到
+            // 这里 ⇒ 非空声明直接抛 NullPointerException（真机 21:32:29 崩过一次，堆栈就是本类的 onScroll）。
+            // 本函数体只读 velocityX/velocityY，e1/e2 一次都没被用过 ⇒ 改可空零风险。
             override fun onFling(
-                e1: MotionEvent,
-                e2: MotionEvent,
+                e1: MotionEvent?,
+                e2: MotionEvent?,
                 velocityX: Float,
                 velocityY: Float
             ): Boolean {
@@ -1508,9 +1512,11 @@ open class DslTabLayout(
                 return true
             }
 
+            // bw（2026-09-24）：同上 —— **e1 就是崩溃堆栈里的那个参数名**，本函数体只用
+            // distanceX/distanceY，e1/e2 一次都没被用过。
             override fun onScroll(
-                e1: MotionEvent,
-                e2: MotionEvent,
+                e1: MotionEvent?,
+                e2: MotionEvent?,
                 distanceX: Float,
                 distanceY: Float
             ): Boolean {

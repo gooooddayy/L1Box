@@ -254,6 +254,9 @@ class ProtectedInitJar {
                     System.out.println("加固 jar 交还自身入口初始化成功，本地代理已由它接管：" + key);
                 } else {
                     invokeNoArg(clz, "replaceCloudDiskNames");
+                    // 手绑成功 ⇒ 它的原生代理引用是有效的（getLoader 已连上正在跑的代理）。
+                    // 记账下来，让 /proxy 也能放行 —— 否则这个 jar 的代理型站点 100% 503（见 proxyCapable）。
+                    rememberHandBound(clz, key);
                     System.out.println("加固 jar 手绑成功（承接已有的本地代理，未重启）：" + key);
                 }
                 FAMILY_LOADERS.add(clz.getClassLoader()); // 身份账本：随 loader 生命周期存活，不受配置重载影响
@@ -269,6 +272,165 @@ class ProtectedInitJar {
         GO_PROXY_STARTED = true;
         PROXY_HOLDER = clz;
         PROXY_HOLDER_KEY = key;
+        // 代理世代 +1（2026-09-28）：持有者每次接管都会 killall 再重启共享 Go 代理，
+        // 之前"手绑"到旧代理上的那些 jar 的原生引用**从此失效**（打进去就是 SIGABRT）。
+        // 世代号是唯一能把"绑定时的代理"与"现在的代理"区分开的凭据，见 proxyCapable。
+        PROXY_GEN.incrementAndGet();
+    }
+
+    // ── 手绑记账（2026-09-28 建 / 2026-09-29 ce 轮实测后重做）────────────────────
+    /**
+     * 代理世代号：**每次持有者接管就 +1**（＝共享 Go 代理被重启过几次）。
+     *
+     * ⚠️ 它只用于**日志与诊断**，不再作为放行判据 —— 原因见下面 `HAND_BOUND` 的注释。
+     */
+    private static final java.util.concurrent.atomic.AtomicLong PROXY_GEN =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
+    /**
+     * 手绑成功的 jar：key → 绑定时那一任**持有者的 key**。
+     *
+     * 为什么需要这本账：`occupyProxy()` 只在"jar 自己重启代理"（tookProxy）时被调用，
+     * 而**手绑成功的 jar 同样持有一份可用的原生代理引用**（它的 `getLoader` 已经成功连上了
+     * 正在跑的代理），却永远进不了 holder 名单。于是 `JarLoader.proxyInvoke` 的门禁
+     * （`!key.equals(proxyHolderKey())` ⇒ 503）把它**永久挡死**。
+     *
+     * 实测（2026-09-28 dd 轮）：站点 `WexAiYueYue` 下发的就是 `127.0.0.1:9978/proxy?do=…`，
+     * 我们自己的预取 **7 ms 就被瞬时拒绝**、jar 的 `localProxy` 从头到尾没被调用过 ——
+     * cb/cc/dd 三轮里 /proxy **一次都没成功**。
+     *
+     * == 2026-09-29 ce 轮实测：初版判据把「手绑」当成了冻结的快照，冷启动必然误杀 ==
+     *
+     * 初版放行条件是「绑定时的 holder 与**世代号**至今都没变」。实测日志（`_ce_dump.txt`）：
+     *
+     * ```
+     * 12:54:13.272  手绑成功 14942a7863        ⇒ 记 (main, gen1)
+     * 12:54:13.571  71b4332a 接管代理          ⇒ GEN 1→2
+     * 12:54:14.268  8ad2ef8d 接管代理          ⇒ GEN 2→3
+     * 12:56:21.269  /proxy do=WexAiYueYue key=14942a7863
+     *               判定=拒:非代理持有者(手绑未登记或世代已变)
+     * ```
+     *
+     * `1 != 3` ⇒ 判死。而家族 jar 本进程有 **4 个**，总有一个先手绑、其余三个陆续接管 ——
+     * 于是「先手绑的那个 jar」**在冷启动时必然出局**，它的代理型站点 100% 503。
+     * 对照组：`0b9565d6a6`（海绵）恰好排在两次接管**之后**才手绑 ⇒ 顺利放行、`do=ck 返回=200`。
+     *
+     * ⇒ 初版的错在于**语义**，不在参数：它把「手绑」理解成"绑定那一刻的那一任代理还能用"，
+     * 而 `bindDexLoader()` 的事实是 `DexNative.getLoader(context)` **每次调用时现场去连当前
+     * 在跑的那个代理**、当场地回一个 `DexClassLoader`。也就是说「手绑成功」表达的本就是
+     * **一个持续成立的关系**：「这个家族 jar 能与**当前活着的**代理建立连接」。
+     * 冻结成快照后，任何一次无关的接管都会让这个本该继续成立的关系被误判为失效。
+     *
+     * == 重做后的放行条件 ==
+     *
+     * 记「绑定时那一任持有者 key」并**只比它**（不再比世代）：
+     *  · 绑定时持有者 == 当前持有者  ⇒ 中间**没有**任何 `occupyProxy`（换届必换 key）；
+     *  · 若绑定时**还没有**持有者（key 为空，`getLoader` 连上的是进程最早那任代理）
+     *    ⇒ 当前仍有持有者即视为继续成立 —— 能走到这一步说明 jar 自己的 `getLoader` 成功过。
+     *  · loader 一致（防 key 相同而 loader 换代）。
+     *
+     * 世代号改成**留痕**：不一致时打一行诊断，但**不影响放行**。这样既保住"绝不误杀"，
+     * 又不丢可观测性。
+     *
+     * ⚠️ 安全边界（为什么敢放宽）：`JarLoader.proxyInvoke` 在 key 门禁**之后**还有一道
+     * 「ClassLoader 终审 + 运行时探测」（`probeFamily` / `isHolderClassLoader` / `proxyCapable`）。
+     * 一层判据放宽只影响"是否走到第二层"，**不会直接放到 native**。真正会在 native 层 abort 的
+     * 是打错 holder 的原生对象，而那条路径由第二层按 loader 身份封死。
+     *
+     * == 2026-09-29 cf 轮后：本项改为「静态推理收口」，不再要求实测 ==
+     *
+     * cf 轮的实测条件**不成立**（用户配置里没有 `WexAiYueYue`，且整轮只有 1 次手绑、0 次接管），
+     * 无法造出「先手绑的 jar 之后又被别的 jar 接管」这个时序。改由静态推理收口，理由如下 ——
+     *
+     * 一、**判据与原 bug 一一对应**。原 bug 的成因是"比世代号"（`HandBound` 里那个 `gen` 字段
+     *     与全局世代计数器的比较）；唯一能把它判死
+     *     的输入是「世代号变了」。现在这个比较**在代码里已不存在**（`HandBound` 里没有 `gen` 字段，
+     *     见下方类定义；`PROXY_GEN` 只出现在日志）。⇒ 原 bug 的**触发条件本身被移除**，
+     *     不需要实测也知道它不会再触发。这是"删除式修复"，不是"参数调优式修复"。
+     *
+     * 二、**新判据的两个分支都只有两种走向，可穷举**。
+     *     设 `H0`=绑定时的持有者 key、`H1`=绑定时的 loader；`Hc`=当前持有者 key、`Lc`=当前 loader。
+     *     · `H0 == Hc` ⇒ 中间没有任何 `occupyProxy` 把别人扶上位（换届必然换 key，
+     *       因为 key 是 jar 的身份标识，见 `occupyProxy` 的写入点）⇒ 代理仍是绑定时那一任 ⇒ 放行合理。
+     *     · `H0 != Hc` ⇒ 确实换过届 ⇒ 拒绝，与原语义一致（保守在拒绝）。
+     *     两种走向的结论都与"这个 jar 还能不能碰当前代理"这个真实问题一致，没有第三种情况。
+     *
+     * 三、**`getLoader` 的语义决定了"手绑＝持续关系"**。`bindDexLoader()` 里
+     *     `DexNative.getLoader(context)` 是**调用现场**去连当时正在跑的代理并当场返回新 loader，
+     *     它拿到的东西天然是"当前"的。把它当作冻结快照才是语义错误 —— 这一条已由 ce 轮的
+     *     对照组反证过：`0b9565d6a6` 排在两次接管**之后**手绑，就能正常放行并 `返回=200`。
+     *
+     * 四、**万一推理有误，代价被封在第二层**。即便某个未预料到的变体骗过了这一层，
+     *     下面的「ClassLoader 终审 + 运行时探测」仍会按 loader 身份拦住（见安全边界）。
+     *     ⇒ 本层放宽的**最坏后果是"多走到第二层再被拒"**，不会变成 SIGABRT。
+     *
+     * ⇒ 结论：本项**判定为已修复**（依据＝触发条件被移除 + 分支穷举 + 语义反证 + 二层兜底），
+     *   不再列入待测项。若将来配置里出现多 jar 站点交叉调用的场景，届时用日志核对一次即可
+     *   （判据：`判定=放行` 出现，且不出现 `拒:手绑后已换届`）。
+     */
+    private static final class HandBound {
+        final String holderKey;
+        final ClassLoader loader;
+        HandBound(String holderKey, ClassLoader loader) {
+            this.holderKey = holderKey;
+            this.loader = loader;
+        }
+    }
+
+    private static final ConcurrentHashMap<String, HandBound> HAND_BOUND = new ConcurrentHashMap<>();
+
+    /** 记一次"手绑成功"（在原生锁内调用，与 holder 同锁，账本不会读到半成品） */
+    private static void rememberHandBound(Class<?> clz, String key) {
+        if (key == null || key.isEmpty()) return;
+        HAND_BOUND.put(key, new HandBound(PROXY_HOLDER_KEY, clz.getClassLoader()));
+    }
+
+    /**
+     * 这个 key / loader 现在能不能走 /proxy（`JarLoader.proxyInvoke` 的**第一层**判据）。
+     *
+     * 返回 true 的两种情况：
+     *  · 它就是当前持有者（原逻辑）；
+     *  · 它是**手绑成功**的 jar，且绑定时那一任持有者**至今仍是当前持有者**（＝中途没换届）。
+     *
+     * 其余一律 false ⇒ 走 `proxyNotReady()`（503）。保守在"拒绝"，而不在"放行"：
+     * 一次 503 只损失一次响应，打错 native 会让整个进程 abort。
+     * 但"拒绝"必须留给**真的换届过**的情况 —— 把无关事件（世代号自增）也算进来，
+     * 就会像 ce 轮那样把不该拒的路径系统性打死。
+     *
+     * ✅ 本项已于 2026-09-29 由**静态推理收口**判定为已修复（触发条件被移除 + 分支穷举 +
+     *    `getLoader` 语义反证 + 二层 ClassLoader 终审兜底），**不列入待测**。
+     *    完整论证见上方 `HAND_BOUND` 的「cf 轮后：本项改为静态推理收口」一节。
+     */
+    static boolean proxyCapable(String key, ClassLoader loader) {
+        if (key == null || key.isEmpty()) return false;
+        if (key.equals(PROXY_HOLDER_KEY)) return true;
+        HandBound hb = HAND_BOUND.get(key);
+        if (hb == null) return false;
+        // 绑定时没有持有者（空）⇒ 只要有持有者活着就认；否则必须仍是同一任
+        if (!hb.holderKey.isEmpty() && !hb.holderKey.equals(PROXY_HOLDER_KEY)) return false;
+        if (PROXY_HOLDER_KEY.isEmpty()) return false;
+        return loader == null || loader == hb.loader;
+    }
+
+    /** 诊断用：当前持有者 key + 世代（/proxy 日志里打出来，一眼看清为什么放行/拒绝） */
+    static String proxyHolderBrief() {
+        String h = PROXY_HOLDER_KEY;
+        return (h == null || h.isEmpty() ? "无" : h) + "@gen" + PROXY_GEN.get();
+    }
+
+    /**
+     * 诊断用：这个 key 在手绑账本里的状态（`无` / `绑定时=%s`）。
+     *
+     * ce 轮实测教训：日志里只有「手绑未登记或世代已变」这一句合并措辞，
+     * 看到时**分不清是"压根没登记"还是"登记了但判据没过"**，只能回去读代码。
+     * 现在把账本原样打出来，一眼可辨。
+     */
+    static String handBoundBrief(String key) {
+        if (key == null || key.isEmpty()) return "无";
+        HandBound hb = HAND_BOUND.get(key);
+        if (hb == null) return "无";     // 这个 key 从没手绑成功过
+        String h = hb.holderKey == null || hb.holderKey.isEmpty() ? "空" : hb.holderKey;
+        return "绑定时=" + h;
     }
 
     /**

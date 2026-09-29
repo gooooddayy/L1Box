@@ -1,4 +1,4 @@
-rootProject.name = "L1Box"
+rootProject.name = "TVBoxMobile"
 include ':app'
 include ':player'
 include ':quickjs'

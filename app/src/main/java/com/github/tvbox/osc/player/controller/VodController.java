@@ -230,6 +230,13 @@ public class VodController extends BaseController {
      */
     private boolean mNextTipCancelled = false;
 
+    /** 续播跳转弹层：进场只问一句"点击跳转 xx:xx"，点它才跳；5 秒后自动淡出，点别处立即淡出 */
+    private static final long RESUME_JUMP_SHOW_MS = 5000L;
+    private static final long RESUME_JUMP_FADE_MS = 220L;
+    private View mResumeJumpLayer;
+    private TextView mResumeJumpText;
+    private long mResumeJumpPos = 0;
+
     int videoPlayState = 0;
     LockRunnable lockRunnable = new LockRunnable();
     private boolean isLock = false;
@@ -245,9 +252,14 @@ public class VodController extends BaseController {
             mPlayLoadNetSpeedRightTop.setText(speed);
             mPlayLoadNetSpeed.setText(speed);
 
-            if (mControlWrapper.getVideoSize()[0] > 0 && mControlWrapper.getVideoSize()[1] > 0) {
-                String width = Integer.toString(mControlWrapper.getVideoSize()[0]);
-                String height = Integer.toString(mControlWrapper.getVideoSize()[1]);
+            int[] videoSize = mControlWrapper.getVideoSize();
+            if (videoSize[0] > 0 && videoSize[1] > 0) {
+                // getVideoSize() 给的是解码器上报的**编码尺寸**；旋转角走的是另一条通道
+                // （只作用于画面渲染，不改写宽高），所以带旋转标记的竖屏片读出来是横的。
+                // 这里按旋转角把宽高对调，让这个数字与实际画面方向一致。
+                boolean swap = (mControlWrapper.getVideoRotation() % 180) != 0;
+                String width = Integer.toString(swap ? videoSize[1] : videoSize[0]);
+                String height = Integer.toString(swap ? videoSize[0] : videoSize[1]);
                 mVideoSize.setText(width + " x " + height);
             }
 
@@ -314,6 +326,20 @@ public class VodController extends BaseController {
         mNextTipText = findViewById(R.id.next_episode_tip_text);
         findViewById(R.id.next_episode_play).setOnClickListener(v -> playNextEpisode());
         findViewById(R.id.next_episode_cancel).setOnClickListener(v -> dismissNextEpisodeTip());
+
+        // 续播跳转弹层：点它=跳到上次位置，点它以外=只收起（用户不接续播，就从开头看）
+        mResumeJumpLayer = findViewById(R.id.resume_jump_layer);
+        mResumeJumpText = findViewById(R.id.resume_jump_text);
+        if (mResumeJumpLayer != null) {
+            mResumeJumpLayer.setOnClickListener(v -> hideResumeJumpTip());
+        }
+        if (mResumeJumpText != null) {
+            mResumeJumpText.setOnClickListener(v -> {
+                long pos = mResumeJumpPos;
+                hideResumeJumpTip();
+                if (pos > 0) mControlWrapper.seekTo((int) pos);
+            });
+        }
 
         // 旋转按钮：全屏时浮动在左侧中部；点击循环旋转，长按锁定/解锁
         mRotateBtn = findViewById(R.id.rotate_screen);
@@ -484,6 +510,9 @@ public class VodController extends BaseController {
                 if (scaleType > 5)
                     scaleType = 0;
                 mPlayerConfig.put("sc", scaleType);
+                // 打上"用户手动调过"的标记：此后这一片这一线路只认这份存档，设置页改全局缩放不影响它。
+                // 反过来，没有这个标记的片子每次起播都会重新跟设置页的全局值走。
+                PlayerHelper.markScalePicked(mPlayerConfig);
                 updatePlayerCfgView();
                 listener.updatePlayerCfg();
                 mControlWrapper.setScreenScaleType(scaleType);
@@ -989,6 +1018,14 @@ public class VodController extends BaseController {
 
         void prepared();
 
+        /**
+         * 底层**真的开始播放**了（STATE_PLAYING）。
+         * 与 prepared() 的区别：prepared 只保证"备好了"，起播成功（画面真的动了）看这个。
+         * 用途：收起常驻的加载/错误提示层（09-23 #3）——错误提示照常弹，但一旦起播成功
+         * 就自动收掉，不再压在正在播放的画面上。
+         */
+        void playing();
+
         void changeParse(ParseBean pb);
 
         void updatePlayerCfg();
@@ -1153,6 +1190,9 @@ public class VodController extends BaseController {
                 stopBufferTicker(); // 进度表已接管刷新，暂停期的补刷停掉（两条路不会同时写）
                 startProgress();
                 mIvPlayStatus.setImageResource(R.drawable.ic_pause);
+                // #3（09-23）：起播成功＝错误提示的使命已结束，收掉它。
+                // 只收提示层，不碰任何判死秒数、不碰兜底链顺序。
+                if (listener != null) listener.playing();
                 break;
             case VideoView.STATE_PAUSED:
                 mIvPlayStatus.setImageResource(R.drawable.ic_play);
@@ -1224,6 +1264,46 @@ public class VodController extends BaseController {
     private void dismissNextEpisodeTip() {
         mNextTipCancelled = true;
         cancelNextEpisodeTip();
+    }
+
+    /**
+     * 画面中央的「点击跳转 xx:xx」弹层：只有点了它才跳到上次位置。
+     *
+     * 之所以不自动跳：一进播放页就被跳走，想从头看的人还要手动拖回来。改成"从头播 + 问一句"，
+     * 想续播的点一下即可、不想续播的直接无视，5 秒后自己淡出。
+     * 弹层是覆盖整屏的一层，点它以外任意处立即淡出（点弹层本体则跳转，见 initView 的绑定）。
+     */
+    public void showResumeJumpTip(long pos) {
+        if (pos <= 0 || mResumeJumpLayer == null || mResumeJumpText == null) return;
+        mResumeJumpPos = pos;
+        mResumeJumpText.setText("点击跳转 " + stringForTime((int) pos));
+        mResumeJumpLayer.animate().cancel();
+        mResumeJumpLayer.setAlpha(1f);
+        mResumeJumpLayer.setVisibility(VISIBLE);
+        mResumeJumpLayer.removeCallbacks(mResumeJumpDismiss);
+        mResumeJumpLayer.postDelayed(mResumeJumpDismiss, RESUME_JUMP_SHOW_MS);
+    }
+
+    private final Runnable mResumeJumpDismiss = new Runnable() {
+        @Override
+        public void run() {
+            hideResumeJumpTip();
+        }
+    };
+
+    /** 淡出并收起续播跳转弹层（淡出期间点它也不该再跳，故先把落点清零） */
+    private void hideResumeJumpTip() {
+        if (mResumeJumpLayer == null) return;
+        mResumeJumpLayer.removeCallbacks(mResumeJumpDismiss);
+        mResumeJumpPos = 0;
+        if (mResumeJumpLayer.getVisibility() != VISIBLE) return;
+        mResumeJumpLayer.animate().alpha(0f).setDuration(RESUME_JUMP_FADE_MS)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mResumeJumpLayer != null) mResumeJumpLayer.setVisibility(GONE);
+                    }
+                }).start();
     }
 
     boolean isBottomVisible() {

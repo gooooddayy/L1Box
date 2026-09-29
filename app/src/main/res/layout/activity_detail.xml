@@ -387,10 +387,13 @@
                         />
                 </LinearLayout>
                 <!--        集数列表-->
+                <!-- H2（2026-09-28 用户口径）：恢复原来的设计 —— 固定高度＋网格内部滚动。
+                     H1 的 wrap_content 全展开会让详情页被"上推"（网格不再吃手势、整页跟着滚）。
+                     行数按用户口径调：126dp(4 行) → 158dp(5 行) → **190dp(6 行)**。 -->
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/mGridView"
                     android:layout_width="match_parent"
-                    android:layout_height="126dp"
+                    android:layout_height="190dp"
                     android:layout_marginHorizontal="10dp"
                     android:layout_marginVertical="16dp"
                     android:clipChildren="false"

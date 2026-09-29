@@ -121,6 +121,11 @@ public class ControlWrapper implements MediaPlayerControl, IVideoController {
     }
 
     @Override
+    public int getVideoRotation() {
+        return mPlayerControl.getVideoRotation();
+    }
+
+    @Override
     public void setRotation(float rotation) {
         mPlayerControl.setRotation(rotation);
     }

@@ -16,8 +16,8 @@
 #   ② 设备环形缓冲默认只有 **256 KiB**（一分钟就被 sensors 噪声刷满）⇒ 先 `logcat -G 64M` 扩到 64 MiB，
 #      这样即使宿主机抓取被掐死，整段日志仍留在设备内存里、`logcat -d` 能完整 dump 回来（灾备）。
 
-export PATH="/c/Users/Administrator/.workbuddy/binaries/PortableGit/versions/1.2.0/usr/bin:/usr/bin:/bin:$PATH"
-ADB="/c/Users/Administrator/AppData/Local/Android/Sdk/platform-tools/adb.exe"
+export PATH="<本机>/.workbuddy/binaries/PortableGit/versions/1.2.0/usr/bin:/usr/bin:/bin:$PATH"
+ADB="<本机>/AppData/Local/Android/Sdk/platform-tools/adb.exe"
 cd "$(dirname "$0")" || exit 1
 LOG="_bn_host.log"
 TAG="L1Mark"

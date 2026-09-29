@@ -28,6 +28,8 @@ public class ChooseSourceDialog extends BottomPopupView {
     List<Source> mSources;
     private final OnSelectListener mListener;
     private CharSequence mTitle;
+    /** 当前生效线路地址（由调用方下传；为空时回落到 Hawk 里的 API_URL） */
+    private String mCurrentUrl;
 
     public ChooseSourceDialog(@NonNull Context context, List<Source> sources, OnSelectListener listener) {
         super(context);
@@ -38,6 +40,17 @@ public class ChooseSourceDialog extends BottomPopupView {
     /** 自定义标题(留空则用布局默认"请选择要导入的仓库") */
     public ChooseSourceDialog setTitle(CharSequence title) {
         this.mTitle = title;
+        return this;
+    }
+
+    /**
+     * 指定"当前生效线路"用于高亮。调用方（首页 / 订阅管理）手上就有订阅对象，
+     * 直接下传它的 activeLineUrl 比反查 Hawk 更准：
+     * 订阅管理里那一行**未必是当前启用的订阅**，此时 Hawk 里的 API_URL 属于另一条订阅。
+     * 留空则回落到 Hawk（保持原行为）。
+     */
+    public ChooseSourceDialog setCurrentUrl(String currentUrl) {
+        this.mCurrentUrl = currentUrl;
         return this;
     }
 
@@ -62,19 +75,12 @@ public class ChooseSourceDialog extends BottomPopupView {
         RecyclerView rv = findViewById(R.id.rv);
         rv.setLayoutManager(new LinearLayoutManager(activity));
         SourceAdapter sourceAdapter = new SourceAdapter();
+        // 当前启用线路高亮：地址必须在 setNewData **之前**交给 adapter，由它在条目绑定时下发选中态。
+        // 旧实现在 setNewData 之后立刻 findViewHolderForAdapterPosition —— 那一刻布局尚未走完，
+        // 返回值恒为 null，于是 setSelected(true) 一次都没真正执行过，列表里永远看不出当前是哪条线路。
+        sourceAdapter.setSelectedUrl(pickCurrentUrl());
         rv.setAdapter(sourceAdapter);
         sourceAdapter.setNewData(mSources);
-        // 当前启用线路高亮
-        String currentUrl = pickCurrentUrl();
-        if (currentUrl != null) {
-            for (int i = 0; i < mSources.size(); i++) {
-                if (currentUrl.equals(mSources.get(i).getSourceUrl())) {
-                    RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(i);
-                    if (vh != null) vh.itemView.setSelected(true);
-                    break;
-                }
-            }
-        }
 
         sourceAdapter.setOnItemClickListener((adapter, view, position) -> {
             dismissWith(() -> {
@@ -86,16 +92,21 @@ public class ChooseSourceDialog extends BottomPopupView {
     }
 
     /**
-     * 从订阅(Hawk)读取当前选中 url,用于在弹窗中高亮显示。
-     * 由于弹窗构造期并未显式传入 currentUrl, 通过 HawkConfig.API_URL + active 仓名比对。
-     * 无匹配时返回 null(不预选)。
+     * 取"当前生效线路"的地址用于高亮，已做归一化（子线路地址来自仓库 JSON，与归一化过的
+     * activeLineUrl 存在大小写/引号/空白差异，不归一化会漏判）。
+     * 优先用调用方下传的 activeLineUrl；没传才回落到 HawkConfig.API_URL（当前启用订阅的有效地址）。
+     * 无匹配时返回空串（表示不高亮任何一条）。
      */
     private String pickCurrentUrl() {
         try {
-            String apiUrl = com.orhanobut.hawk.Hawk.get(com.github.tvbox.osc.util.HawkConfig.API_URL, "");
-            return apiUrl == null || apiUrl.isEmpty() ? null : apiUrl;
+            String url = mCurrentUrl;
+            if (url == null || url.isEmpty()) {
+                url = com.orhanobut.hawk.Hawk.get(com.github.tvbox.osc.util.HawkConfig.API_URL, "");
+            }
+            if (url == null || url.isEmpty()) return "";
+            return com.github.tvbox.osc.util.L1SubUrl.normalize(url);
         } catch (Throwable ignore) {
-            return null;
+            return "";
         }
     }
 }

@@ -37,6 +37,10 @@ import xyz.doikki.videoplayer.exo.ExoMediaSourceHelper;
 
 public class OkGoHelper {
     public static final long DEFAULT_MILLISECONDS = 10000;      //默认的超时时间
+    // P1（2026-09-28）：图片专用超时 —— 比接口短得多。图片卡住时快速失败让出并发槽，
+    // 不让一张坏图拖住 1/8 的下载能力整整 10 秒。
+    private static final long IMAGE_CONNECT_TIMEOUT_MS = 4000;
+    private static final long IMAGE_READ_TIMEOUT_MS = 6000;
 
     static void initExoOkHttpClient() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
@@ -201,6 +205,38 @@ public class OkGoHelper {
         return purifyClient;
     }
 
+    private static OkHttpClient forwardClient = null;
+
+    /**
+     * 转发端点（/l1play）专用 client（2026-09-24 bt）：**读超时不设限**。
+     *
+     * 为什么不能用默认 client：`getDefaultClient()` 的 readTimeout 是 10 秒，而这里转发的是
+     * **视频流** —— 播放器暂停、拖动、或上游本身缓冲稍久，只要 10 秒没有新数据到达，OkHttp 就抛
+     * read timed out 掐断这条连接。外部播放器的表现正是"播一会儿就结束"，这是 D1 实测里
+     * "另一个 10 秒"的来源（第一个 10 秒是请求头在包装那一步被丢掉）。
+     *
+     * 不设读超时不会漏回收：播放器一旦断开，往它那条 socket 回写会立刻抛 IOException 退出；
+     * 真正需要设限的连接建立阶段，connectTimeout 仍是默认 10 秒。
+     */
+    public static OkHttpClient getForwardClient() {
+        if (forwardClient == null) {
+            try {
+                OkHttpClient base = getDefaultClient();
+                if (base != null) {
+                    forwardClient = base.newBuilder()
+                            .connectTimeout(DEFAULT_MILLISECONDS, TimeUnit.MILLISECONDS)
+                            .readTimeout(0, TimeUnit.MILLISECONDS)
+                            .writeTimeout(0, TimeUnit.MILLISECONDS)
+                            .build();
+                }
+            } catch (Throwable th) {
+                th.printStackTrace();
+                forwardClient = null;
+            }
+        }
+        return forwardClient;
+    }
+
     public static void init() {
         initDnsOverHttps();
 
@@ -247,13 +283,35 @@ public class OkGoHelper {
         client.dispatcher().setMaxRequestsPerHost(32);
         // 图片使用独立的带磁盘缓存的 client: 海报可复用, 重复进入秒开并节省流量。
         // 缓存只作用于图片, 接口请求仍走无缓存的 defaultClient, 避免数据被缓存后不刷新。
+        //
+        // P1（2026-09-28 真机实测修订）：原来只是 `client.newBuilder().cache(...)` —— 于是图片
+        // **和接口请求共用 Dispatcher、连接池与 10 秒超时**。实测后果：一次搜索 250+ 张图，
+        // 只有 4 路并发且是同步阻塞下载，任一张卡住就占住 1/4 并发整整 10 秒 ⇒ 整体极慢。
+        // 现在给图片一条完全独立的路：自己的 Dispatcher/连接池 + 收紧的超时（快速让位）。
+        // 继承主 client 的部分（DNS=DoH 兜底、Brotli、SSL 宽松、connectionSpecs）都是需要的，保留。
+        okhttp3.Dispatcher imgDispatcher = new okhttp3.Dispatcher();
+        imgDispatcher.setMaxRequests(DeviceProfile.imageMaxRequests());
+        imgDispatcher.setMaxRequestsPerHost(DeviceProfile.imageMaxRequestsPerHost());
         OkHttpClient imageClient = client.newBuilder()
-                .cache(new Cache(new File(App.getInstance().getCacheDir(), "img_cache"), 64 * 1024 * 1024))
+                .dispatcher(imgDispatcher)
+                .connectionPool(new okhttp3.ConnectionPool(DeviceProfile.imageConnectionPool(), 5, java.util.concurrent.TimeUnit.MINUTES))
+                .connectTimeout(IMAGE_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .readTimeout(IMAGE_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .writeTimeout(IMAGE_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .retryOnConnectionFailure(false)
+                .cache(new Cache(new File(App.getInstance().getCacheDir(), "img_cache"), DeviceProfile.imageCacheBytes()))
                 .build();
         MyOkhttpDownLoader downloader = new MyOkhttpDownLoader(imageClient);
         Picasso picasso = new Picasso.Builder(App.getInstance())
                 .downloader(downloader)
-                .executor(HeavyTaskUtil.getBigTaskExecutorService())
+                // bv（2026-09-24）：图片任务（下载＋解码＋圆角变换，**全程同步阻塞**）从 l1box-net 搬出来。
+                // 那个池同时是 OkGo 的**全局网络回调池**（core 3~5 / max 6 / 队列 8192），一次搜索
+                // 286 条结果就是几百张海报排队，网络回调跟着一起饿死 —— 用户看到的是"图片不出来"。
+                // ⚠ 池参数是**上游原版**（git show f834e74 原文），不动它，只让图片走自己的池。
+                // P1：4 → 8。图片下载是纯 IO 等待，8 路吞吐约翻倍；配合"可见窗口跳过"
+                // （见 L1ImageDemand），真实同时下载数 ≈ min(8, 可见图数)，对单个图床的压力与浏览器相当。
+                // cj（2026-09-29）：并行度改按设备档位取（低档 4、中/高档仍为 8），中高档行为逐字不变。
+                .executor(L1Executors.fixed("l1box-img", DeviceProfile.imageThreads()))
                 .defaultBitmapConfig(Bitmap.Config.RGB_565)
                 .build();
         Picasso.setSingletonInstance(picasso);

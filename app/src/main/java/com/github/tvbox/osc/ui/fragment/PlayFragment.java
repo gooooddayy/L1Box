@@ -134,9 +134,9 @@ import okhttp3.OkHttpClient;
 import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IjkTimedText;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
+import xyz.doikki.videoplayer.player.PlayErrCode;
 import xyz.doikki.videoplayer.player.ProgressManager;
 import xyz.doikki.videoplayer.player.VideoView;
-import xyz.doikki.videoplayer.util.PlayerUtils;
 
 public class PlayFragment extends BaseLazyFragment {
     private MyVideoView mVideoView;
@@ -395,36 +395,8 @@ public class PlayFragment extends BaseLazyFragment {
         return u.contains("://127.0.0.1") || u.contains("://localhost") || u.contains("://[::1]");
     }
 
-    /**
-     * 请求头兜底补全：只在站点**没给** Referer 时，按播放地址补一个同源 Referer。
-     *
-     * 为什么只补 Referer、不补 UA：工程里没有"固定 UA"的公共出口（只有一组随机浏览器 UA 的工具），
-     * 而给同一个源每次请求随机 UA 会把不确定性带进播放链路，与"稳定优先"相悖 ——
-     * UA 缺失时播放器用自带默认值，行为与改动前一致；站点显式给了 UA 的照旧原样使用。
-     *
-     * 补 Referer 的收益是明确的：防盗链校验 Referer，缺了就 403；补的是地址自身的同源前缀，
-     * 对不需要 Referer 的源无影响。只补缺失项，绝不覆盖站点已给的值。任何异常都退回原请求头。
-     */
-    private static HashMap<String, String> fillMissingHeaders(String url, HashMap<String, String> headers) {
-        try {
-            if (url == null || !url.toLowerCase().startsWith("http")) return headers;
-            if (url.contains("://127.0.0.1") || url.contains("://localhost")) return headers; // 本地地址没有防盗链
-            if (headers != null) {
-                for (String k : headers.keySet()) {
-                    if ("Referer".equalsIgnoreCase(k)) return headers;
-                }
-            }
-            int p = url.indexOf("://");
-            int slash = url.indexOf('/', p + 3);
-            String origin = (slash > 0) ? url.substring(0, slash + 1) : url;
-            HashMap<String, String> out = (headers == null) ? new HashMap<>() : new HashMap<>(headers);
-            out.put("Referer", origin);
-            PlayTrace.stage("请求头", "补同源 Referer=" + origin);
-            return out;
-        } catch (Throwable th) {
-            return headers;
-        }
-    }
+    // 请求头兜底补全（fillMissingHeaders）已搬到 PlayerHelper：净化和外部播放器转发两条链路
+    // 都要用它，只留一份实现，避免两边口径漂移。
 
     /**
      * 剥掉 UTF-8 BOM。清单首个字符是 BOM 时，播放器按文本解析会直接失败；
@@ -471,40 +443,45 @@ public class PlayFragment extends BaseLazyFragment {
         initData();
     }
 
-    /** 本次起播的落点(毫秒)，供 prepared() 给出一次性的续播/片头提示 */
-    private long mResumeTipPos = 0;
-    /** 本次起播配置的片头跳过秒数 */
-    private int mResumeTipSkipSec = 0;
+    /** 已经给过落点提示的进度键：解析重试等重复 prepared 时不再弹第二次 */
+    private String mResumeTipShownKey = null;
 
     public long getSavedProgress(String url) {
-        int st = 0;
-        try {
-            st = mVodPlayerCfg.getInt("st");
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
+        int st = getSkipIntroSec();
         long skip = st * 1000L;
         // 进度自成一档存储（不走 cache 表），换解析地址后同一集仍能续播
         long rec = ProgressStore.get(url);
-        mResumeTipPos = Math.max(rec, skip);
-        mResumeTipSkipSec = st;
-        return mResumeTipPos;
+        return Math.max(rec, skip);
+    }
+
+    /** 本片配置的"跳过片头"秒数（没配就是 0） */
+    private int getSkipIntroSec() {
+        try {
+            return mVodPlayerCfg == null ? 0 : mVodPlayerCfg.getInt("st");
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return 0;
+        }
     }
 
     /**
-     * 起播后一次性提示本次落点。续播与片头跳过只会命中一个，故不担心两条提示叠加；
-     * 位置不足 10 秒不提示——刚开头就弹提示是打扰，用户自己也能感知。
+     * 起播后一次性给出本次落点。续播与片头跳过只会命中一个，故不担心两条提示叠加；
+     * 位置不足 10 秒不提示——刚开头就弹窗是打扰，用户自己也能感知。
+     *
+     * 2026-09-24 起：历史进度**不再自动跳转**，改为画面中央弹「点击跳转 xx:xx」由用户点选
+     * （进场从头播；想续播的点弹窗，不点就 2 秒后淡出）。片头跳过是另一码事，行为不变。
      */
     private void showResumeTip() {
-        long pos = mResumeTipPos;
-        int skipSec = mResumeTipSkipSec;
-        mResumeTipPos = 0; // 消费掉，避免解析重试等重复 prepared 时再次提示
-        mResumeTipSkipSec = 0;
-        if (pos <= 0 || getContext() == null) return;
-        if (pos > skipSec * 1000L) {
-            if (pos < 10000) return;
-            ToastUtils.showShort("已从 " + PlayerUtils.stringForTime((int) pos) + " 继续播放");
+        if (getContext() == null) return;
+        if (progressKey != null && progressKey.equals(mResumeTipShownKey)) return;
+        int skipSec = getSkipIntroSec();
+        long rec = (progressKey == null) ? 0 : ProgressStore.get(progressKey);
+        if (rec > skipSec * 1000L) {
+            if (rec < 10000) return;
+            mResumeTipShownKey = progressKey;
+            mController.showResumeJumpTip(rec);
         } else if (skipSec > 0) {
+            mResumeTipShownKey = progressKey;
             ToastUtils.showShort("已跳过片头 " + skipSec + " 秒");
         }
     }
@@ -551,7 +528,11 @@ public class PlayFragment extends BaseLazyFragment {
 
             @Override
             public long getSavedProgress(String url) {
-                return PlayFragment.this.getSavedProgress(url);
+                // 内核拿这个值在 onPrepared() 里自动 seek。这里**只回"跳过片头"的秒数**：
+                // 记录的历史进度不再自动跳转，改为画面中央弹「点击跳转 xx:xx」由用户点选
+                // （进场从头播，想续播的点一下）。片头跳过是另一码事，行为保持不变。
+                // 注意别改成调 this.getSavedProgress()：那会把历史进度也算进来，等于恢复自动跳转。
+                return getSkipIntroSec() * 1000L;
             }
         };
         mVideoView.setProgressManager(progressManager);
@@ -587,8 +568,10 @@ public class PlayFragment extends BaseLazyFragment {
             public void changeParse(ParseBean pb) {
                 autoRetryCount = 0;
                 // 换了解析接口＝换了内容来源，兜底额度重新给满
-                mRefetchTried = false; // P1：新来源，自动重取的 once 护栏重新给满
+                mRefetchTried = 0; // P1：新来源，自动重取的护栏重新给满
                 mPlaybackHadStarted = false;
+                mLastErrClass = null; // I2：换了内容来源＝新签名
+                mLastErrUrl = null;
                 fbKey = null;
                 fbPlan = null;
                 fbPlanIdx = 0;
@@ -614,8 +597,10 @@ public class PlayFragment extends BaseLazyFragment {
             @Override
             public void replay(boolean replay) {
                 autoRetryCount = 0;
-                mRefetchTried = false; // P1：用户主动重播，once 护栏重新给满
+                mRefetchTried = 0; // P1：用户主动重播，护栏重新给满
                 mPlaybackHadStarted = false;
+                mLastErrClass = null; // I2：用户主动重播＝新签名
+                mLastErrUrl = null;
                 mRetryGen++; // 用户主动重播，与手动「重试」同理：排队中的自动重取一律作废
                 play(replay);
             }
@@ -627,6 +612,21 @@ public class PlayFragment extends BaseLazyFragment {
                 // 那一次会把仅剩的降级额度白白吃掉（实测同一集出现过间隔 0.25 秒的两轮降级）。
                 if (mPlayStartedAt > 0 && mPlayStartedAt == mFailHandledAt) return;
                 mFailHandledAt = mPlayStartedAt;
+                // I1（2026-09-28）：内核错误码归因 —— 只写埋点，不改变任何判定行为。
+                // "很多源直接播放失败"此前无法分类（403 防盗链/404/解码/超时全走同一条链），二期按此分布定刀。
+                String errDesc = PlayErrCode.take();
+                String errClass = PlayErrCode.classify(errDesc);
+                // I2：同一 URL 上同类错误已完整走过一轮变形/降级 ⇒ 链路重走必然空转，直接到重取档
+                boolean chainAlreadyTried = errClass != null
+                        && errClass.equals(mLastErrClass)
+                        && !TextUtils.isEmpty(mPlayingUrl) && mPlayingUrl.equals(mLastErrUrl);
+                mLastErrClass = errClass;
+                mLastErrUrl = mPlayingUrl;
+                PlayTrace.fail("内核", "播放失败：code=" + (errDesc.isEmpty() ? "无" : errDesc)
+                        + " 类=" + (errClass == null ? "未知" : errClass)
+                        + " 阶段=" + (mPlaybackHadStarted ? "起播后" : "起播")
+                        + " 站点=" + sourceKey
+                        + " 走到=" + (chainAlreadyTried ? "重取(同址同类已试过变形/降级)" : "全链"), -1);
                 // 还有别的解析地址时优先换地址（换地址比换播放器更可能成功），顺序与改动前一致
                 if (loadFoundVideoUrls != null && loadFoundVideoUrls.size() > 0) {
                     errorWithRetry("视频播放出错");
@@ -638,11 +638,19 @@ public class PlayFragment extends BaseLazyFragment {
                 if (mPlaybackHadStarted && tryRefetchOnce("播放中断", false)) return;
                 // 走的是本地净化代理 → 先回退原始直连：代理这一层坏了，拿代理地址怎么重试都没用
                 if (fallbackToRawUrl()) return;
+                if (chainAlreadyTried) {
+                    // I2：同址同类错误，变形/降级已证明无效 —— 跳到重取档（额度护栏照常生效）
+                    if (tryRefetchOnce("同址同类兜底试尽", true)) return;
+                    PlayTrace.fail("出链", "同址同类去重后兜底试尽，转为明确提示",
+                            mPlayStartedAt > 0 ? (System.currentTimeMillis() - mPlayStartedAt) : -1);
+                    errorFinal("视频播放出错");
+                    return;
+                }
                 // 同址换协议试一次（零网络成本、不换内核，比换播放器更"轻"）
                 if (retryVariantUrl()) return;
                 // 再用内置播放器做确定性降级（IJK 软解 → Exo），阶梯按集重置、不重复试同一配置
                 if (compatFallback()) return;
-                // P1（09-22 拍板）：起播阶段兜底全试尽 —— 同样先重新取链一次
+                // P1（09-22 拍板 / 09-23 上限放宽）：起播阶段兜底全试尽 —— 同样先重新取链
                 // （受总时长上限护栏，见 REFETCH_TOTAL_BUDGET_MS；09-22 第二例在 10 秒处报错，
                 //  手动换线路 627ms 就能播，说明死的是那条链不是那个源）。
                 if (tryRefetchOnce("起播兜底试尽", true)) return;
@@ -650,8 +658,9 @@ public class PlayFragment extends BaseLazyFragment {
                 // 这里用 errorFinal 而不是 errorWithRetry：地址、协议、内核三条路都已经试过，
                 // 再排一次"重新取链"只会又开一个 32 秒的观察窗口，把等待白白拖长；
                 // 用户看到提示后点「重试」才是重新取链的正确入口（那会重置本集额度）。
-                // （09-22 更新：上面两处 tryRefetchOnce 是**带护栏的一次性**重取，errorFinal
-                //   仍是终态出口 —— once 护栏保证它最多被绕过一次，不会回到无界的循环重取。）
+                // （09-23 更新：上面两处 tryRefetchOnce 是**有次数上限**的重取（REFETCH_MAX 次），
+                //   errorFinal 仍是终态出口 —— 上限保证它最多被绕过 REFETCH_MAX 次，
+                //   不会回到无界的循环重取。09-23 用户拍板上限由 1 放宽到 2。）
                 PlayTrace.fail("出链", "自动兜底试尽，转为明确提示",
                         mPlayStartedAt > 0 ? (System.currentTimeMillis() - mPlayStartedAt) : -1);
                 errorFinal("视频播放出错");
@@ -683,6 +692,15 @@ public class PlayFragment extends BaseLazyFragment {
                 }
                 initSubtitleView();
                 showResumeTip();
+            }
+
+            @Override
+            public void playing() {
+                // #3（09-23 用户拍板）：错误提示**照常弹**，但起播成功就**自动收掉**。
+                // 提示层是常驻的（只有用户动作/下次取链才清），此前"视频播放出错"会在兜底链
+                // 已经救回来、画面正常播放之后继续压在屏幕上 —— 用户看到的是"提示还在＝还没好"。
+                // 这里只做收尾，不动判死秒数、不动兜底顺序、不动提示文案。
+                hideTip();
             }
 
             @Override
@@ -719,7 +737,9 @@ public class PlayFragment extends BaseLazyFragment {
                 // 防重入：弹窗还在显示时忽略新的点击，避免重复发现设备/重复推送
                 if (mCastDialog != null && mCastDialog.isShow()) return;
                 try {
-                    mCastDialog = new CastDialog(activity, url, title);
+                    // 投屏设备自己去上游取流，天生带不上请求头（缺头就是 403）⇒ 换成局域网可达的
+                    // 本机转发端点，由本机统一带上请求头（一次性随机码）。取不到局域网 IP 时原样退回。
+                    mCastDialog = new CastDialog(activity, PlayerHelper.wrapForCast(url, mPlayingHeaders), title);
                     // 必须经 XPopup.Builder 包装：直接 show() 时 popupInfo 为 null，
                     // XPopup 会抛 IllegalArgumentException("popupInfo is null") → 点投屏即闪退到崩溃页
                     new XPopup.Builder(activity).asCustom(mCastDialog).show();
@@ -1143,7 +1163,9 @@ public class PlayFragment extends BaseLazyFragment {
             mVariantTried = false;
             mVariantBaseUrl = null;
             mFailHandledAt = 0;
-            mRefetchTried = false; // P1：用户手动重试，自动重取的 once 护栏重新给满
+            mLastErrClass = null; // I2：手动重试＝新签名，同址同类去重重新开始
+            mLastErrUrl = null;
+            mRefetchTried = 0; // P1：用户手动重试，自动重取的护栏重新给满
             mPlaybackHadStarted = false;
             mRetryGen++; // 作废排队中的那次自动重取：用户已经自己发起了一次，不能并发取链
             mEpisodeStartAt = System.currentTimeMillis(); // 用户明确要求再试一次，预算重新给满
@@ -1159,9 +1181,15 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     void hideTip() {
-        mPlayLoadTip.setVisibility(View.GONE);
-        mPlayLoading.setVisibility(View.GONE);
-        mPlayLoadErr.setVisibility(View.GONE);
+        // 统一走 UI 线程：调用点目前都在主线程（runOnUiThread 在主线程时是同步执行的，
+        // 所以 play() 里"先 hideTip 再 setUrl"的顺序不变），加上这层是给 #3 的
+        // 播放状态回调兜底 —— 那条路来自播放器内核，不该假设线程。
+        if (!isAdded()) return;
+        requireActivity().runOnUiThread(() -> {
+            mPlayLoadTip.setVisibility(View.GONE);
+            mPlayLoading.setVisibility(View.GONE);
+            mPlayLoadErr.setVisibility(View.GONE);
+        });
     }
 
     /**
@@ -1204,19 +1232,64 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     /**
-     * 净化预取失败的粗归因（只写埋点，不改变任何行为）。
-     * 重点是把"本机代理地址"和"远端地址"分开统计：本机代理没起来时，那个地址播多少次都不会成功，
-     * 属于另一层面的问题。用真实使用的统计去判断它占多少，而不是靠猜。
+     * 净化预取失败的归因（只写埋点，不改变任何行为）。
+     *
+     * dd 轮实测暴露的缺口（2026-09-28）：原来只打异常**类名**，于是 `HttpException` 把
+     * 403 / 404 / 502 三种完全不同的情况混成了一个字符串 —— 而它们的修法毫无共通之处
+     * （403＝防盗链，补请求头/Referer/UA；404＝地址已失效，重取无意义；5xx＝源站问题）。
+     * 现在把**状态码**打出来，也把超时/连接失败/DNS 分开。
+     *
+     * 同时区分"本机代理地址"与"远端地址"：本机代理没起来时，那个地址播多少次都不会成功。
      */
     private static String purifyFailKind(String url, Response<String> response) {
         try {
             boolean local = url != null
                     && (url.contains("://127.0.0.1") || url.contains("://localhost"));
             Throwable th = (response == null) ? null : response.getException();
-            String type = (th == null) ? "无异常对象" : th.getClass().getSimpleName();
-            return (local ? "本地代理地址/" : "远端地址/") + type;
+            // ① 首选：从 OkGo 的**原始响应**里读真实状态码（ce 2026-09-28 修正）。
+            // dd 轮实测教训：OkGo 3.0.4 抛 HttpException 时 rawResponse 已被置空 ⇒ code() 读回 0，
+            // 日志里只剩 `Http0`（＝看不出 403/404/502），而这三者的修法毫无共通之处。
+            int rawCode = -1;
+            try {
+                okhttp3.Response raw = (response == null) ? null : response.getRawResponse();
+                if (raw != null) rawCode = raw.code();
+            } catch (Throwable ignored) {
+            }
+            String kind;
+            if (rawCode > 0) {
+                kind = "Http" + rawCode;
+            } else if (th instanceof com.lzy.okgo.exception.HttpException) {
+                int c = ((com.lzy.okgo.exception.HttpException) th).code();
+                kind = (c > 0) ? ("Http" + c) : ("Http异常(" + briefMsg(th) + ")");
+            } else if (th instanceof java.net.SocketTimeoutException) {
+                String m = th.getMessage() == null ? "" : th.getMessage().toLowerCase();
+                kind = m.contains("connect") ? "连接超时" : "读取超时";
+            } else if (th instanceof java.net.UnknownHostException) {
+                kind = "DNS解析失败";
+            } else if (th instanceof java.net.ConnectException) {
+                kind = "连接失败";
+            } else if (th instanceof javax.net.ssl.SSLException) {
+                kind = "TLS/证书";
+            } else if (th == null) {
+                kind = "无异常对象";
+            } else {
+                kind = th.getClass().getSimpleName() + "(" + briefMsg(th) + ")";
+            }
+            return (local ? "本地代理地址/" : "远端地址/") + kind;
         } catch (Throwable err) {
             return "归因失败";
+        }
+    }
+
+    /** 异常原文（截断到 60 字）：OkGo/内核给出的最后一句人话，往往比类名有用得多 */
+    private static String briefMsg(Throwable th) {
+        try {
+            String m = th.getMessage();
+            if (m == null) return "-";
+            m = m.replace('\n', ' ').trim();
+            return m.length() <= 60 ? m : m.substring(0, 60);
+        } catch (Throwable ignored) {
+            return "-";
         }
     }
 
@@ -1301,7 +1374,7 @@ public class PlayFragment extends BaseLazyFragment {
         // raw 用新变量而不是重新赋值参数 —— 参数一旦被赋值就不再是 effectively final，
         // 而下面的净化回调（匿名类）要引用它。
         final HashMap<String, String> raw = rawHeaders;
-        final HashMap<String, String> headers = fillMissingHeaders(url, rawHeaders);
+        final HashMap<String, String> headers = PlayerHelper.fillMissingHeaders(url, rawHeaders);
         mCurrentUrl = url;
         // 代次在任何一条出口之前自增：新一集的地址未必需要净化（不走净化就不该有净化请求），
         // 但上一集"在飞"的净化回调必须一律作废，否则它会用旧地址把新一集覆盖掉。
@@ -1504,30 +1577,19 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     /**
-     * 地址是否能交给播放内核。
+     * 2026-09-28（用户口径）：**这里原来有一道 `isPlayableUrl()` 门闸 —— 已撤除。**
      *
-     * 判据只有一条：必须带 scheme（含 "://"）。内核（Exo/IJK）都按 URL 解析，没有 scheme 的字符串必然失败，
-     * 而且失败得很贵 —— 会走完整条兜底链。实测：某站点同一集两分钟内一次给 https 直链（能播）、
-     * 一次给 `Ksvideo-<hex>`（全工程没有这个协议），后者让界面空转约 12 秒才给提示。
+     * 原判据是"必须含 `://`，否则判死、跳过播放器与兜底链"。撤除原因（真机实测）：
+     * 站点下发的地址并不都是"媒体直链"——有的源给的是需要**解析**的令牌串（如 `YYNB-<32hex>`），
+     * 这类地址被这道预判**整类判死**（cb 日志 ×6），而项目本来就有解析通道
+     * （`parse=1`/`jx=1` → `initParse`，以及 `parse:`、`json:` 前缀）本该有机会处理。
      *
-     * magnet:/thunder/ed2k/.torrent 同样不带 "://"，但它们有专用通路（play() 里先经 Thunder.play 处理），
-     * 所以交给那个模块自己判，不在这里拦。
+     * 用户明确要求：**「不要另加判错（防止误判），加载不出会自动报错」** ——
+     * 所以现在地址一律按原有流程走：能播就播；播不了由内核报错、按原有兜底链走完、给明确提示。
+     * 代价是"注定失败的地址"会多花几秒走完兜底链，但换来**不误杀任何可能可播的地址**。
      */
-    private static boolean isPlayableUrl(String url) {
-        if (TextUtils.isEmpty(url)) return false;
-        return url.contains("://") || Thunder.isSupportUrl(url);
-    }
-
     void startPlayUrl(String url, HashMap<String, String> rawHeaders) {
         LOG.i("playUrl:" + url);
-        // 不是 URL 的地址直接判掉，不进播放器、也不进兜底链（那些步骤对它一律无效）。
-        // 出口仍走 errorWithRetry，所以"静默自动重取一次"保留着：源侧轮换出可用地址时能自动救回来。
-        if (!isPlayableUrl(url)) {
-            PlayTrace.fail("地址", "站点下发的地址不是 URL（不含 ://），跳过播放器与兜底链", -1);
-            cancelStartWatchdog();
-            errorWithRetry("站点返回的地址无法播放");
-            return;
-        }
         // 这一层不再补 Referer：它会把「源站 Referer」写进播放器的默认请求头，使跨域 CDN 上的
         // 分片请求被 403（详见 playUrl 顶部说明）。请求头一律按调用方给的用。
         final HashMap<String, String> headers = rawHeaders;
@@ -1835,7 +1897,11 @@ public class PlayFragment extends BaseLazyFragment {
             if (!mVodPlayerCfg.has("ijk")) {
                 mVodPlayerCfg.put("ijk", Hawk.get(HawkConfig.IJK_CODEC, ""));
             }
-            if (!mVodPlayerCfg.has("sc")) {
+            // 缩放与播放器同构（见 KEY_SCALE_PICKED）：没在播放器里手动调过时，每次起播都实时
+            // 跟设置页的全局值走 —— 设置页一改，下一次播放立刻生效。
+            // 原写法只要"配置里已经有 sc 键"就不再从全局值取（而 sc 在第一次起播就被写死落盘），
+            // 于是设置页此后永远进不来，表现为"默认缩放不生效"。
+            if (!PlayerHelper.isScalePicked(mVodPlayerCfg)) {
                 mVodPlayerCfg.put("sc", Hawk.get(HawkConfig.PLAY_SCALE, 0));
             }
             if (!mVodPlayerCfg.has("sp")) {
@@ -2164,15 +2230,28 @@ public class PlayFragment extends BaseLazyFragment {
     // 当日两例（播放中上游 404、起播兜底试尽）都在同一条死链上打转：换地址/协议/内核全是对着
     // 同一个 URL 重播，唯一有效的动作"重新取链"反而只能靠用户手动点「重试」。两例手动重取
     // 都立刻救回（403ms / 627ms 起播）。这里把那个动作自动化，护栏两道：
-    // ① 本集只自动重新取链一次（换集/手动重试/重播/换解析时复位）；
+    // ① 本集自动重新取链有次数上限 REFETCH_MAX（换集/手动重试/重播/换解析时复位）；
     // ② 从未就绪过的（起播阶段）受总时长上限约束 —— "每一步都空转"的病理在那里
     //    （见 errorFinal 注释），不加界最坏等待会被拖过承诺；就绪过再死的不受此限，
     //    因为地址已被证明有效，中途 404 可发生在任意时刻。
     private static final long REFETCH_TOTAL_BUDGET_MS = 20000;
-    /** 本集是否已经自动重新取链过（once 护栏） */
-    private boolean mRefetchTried = false;
+    /**
+     * 本集「自动重新取链」的次数上限（09-23 用户拍板 1 → 2）。
+     * 上限只在两个终态出口之前生效（起播兜底试尽 / 播放中断），且起播那条另受
+     * REFETCH_TOTAL_BUDGET_MS 约束 —— 所以放宽到 2 次**不会拉长正常起播**，
+     * 只多给"死链上本来要判死"的集一次机会。
+     */
+    private static final int REFETCH_MAX = 2;
+    /** 本集已经自动重新取链过的次数（护栏） */
+    private int mRefetchTried = 0;
     /** 本集播放是否就绪过（prepared 过）：区分「播放中断」与「起播就没起来」两条护栏路径 */
     private boolean mPlaybackHadStarted = false;
+
+    // I2（2026-09-28）：同址同类错误的整链去重 —— 各档自己的 once 旗标只管"档不被重复执行"，
+    // 这里去重的是"整条兜底链不被空转重走"：同一 URL 上同一类错误（网络/HTTP、解码）已经
+    // 完整走过一轮变形/降级 ⇒ 再走一遍不可能有新结果，直接跳到重取档（换 URL 天然改变签名）。
+    private String mLastErrClass = null;
+    private String mLastErrUrl = null;
 
     /**
      * 自动重取：安排一次"退避之后重新取链"，返回 true 表示已经接管（调用方不要再显示失败提示）。
@@ -2241,7 +2320,7 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     /**
-     * P1（2026-09-22 拍板）：兜底链的「重新取链」档 —— 本集只试一次。
+     * P1（2026-09-22 拍板，09-23 放宽到 2 次）：兜底链的「重新取链」档。
      *
      * @param where 埋点用：区分「播放中断」（就绪过后死掉）与「起播兜底试尽」
      * @param boundedTotal 起播阶段传 true：受 REFETCH_TOTAL_BUDGET_MS 总时长上限约束，
@@ -2249,9 +2328,10 @@ public class PlayFragment extends BaseLazyFragment {
      *                     播放中断传 false：地址已被证明有效，重取不该受取链预算约束。
      */
     private boolean tryRefetchOnce(String where, boolean boundedTotal) {
-        if (mRefetchTried) return false;
-        mRefetchTried = true;
-        PlayTrace.stage("重试", "自动重新取链一次（" + where + "，护栏=once"
+        if (mRefetchTried >= REFETCH_MAX) return false;
+        mRefetchTried++;
+        PlayTrace.stage("重试", "自动重新取链（第 " + mRefetchTried + "/" + REFETCH_MAX + " 次，"
+                + where + "，护栏=上限" + REFETCH_MAX
                 + (boundedTotal ? "+总时长" + (REFETCH_TOTAL_BUDGET_MS / 1000) + "s" : "") + "）");
         return autoRetry(boundedTotal ? REFETCH_TOTAL_BUDGET_MS : 0);
     }
@@ -2285,7 +2365,9 @@ public class PlayFragment extends BaseLazyFragment {
             mVariantTried = false;
             mVariantBaseUrl = null;
             mFailHandledAt = 0;
-            mRefetchTried = false; // P1：换集＝新的一集，重新取链的 once 护栏重新给满
+            mLastErrClass = null; // I2：换集＝新签名，同址同类去重重新开始
+            mLastErrUrl = null;
+            mRefetchTried = 0; // P1：换集＝新的一集，重新取链的护栏重新给满
             mPlaybackHadStarted = false;
             mRetryGen++; // 换集后上一集排队的重取必须作废（新一集会有自己的取链）
             mEpisodeStartAt = System.currentTimeMillis(); // 换集＝新的一集，重播预算重新给满

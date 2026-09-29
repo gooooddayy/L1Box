@@ -16,6 +16,7 @@ import tv.danmaku.ijk.media.player.IjkMediaPlayer;
 import tv.danmaku.ijk.media.player.misc.ITrackInfo;
 import tv.danmaku.ijk.media.player.misc.IjkTrackInfo;
 import xyz.doikki.videoplayer.player.AbstractPlayer;
+import xyz.doikki.videoplayer.player.PlayErrCode;
 import xyz.doikki.videoplayer.player.VideoViewManager;
 
 public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorListener,
@@ -71,6 +72,7 @@ public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorLis
                 mMediaPlayer.setDataSource(mAppContext, uri, headers);
             }
         } catch (Exception e) {
+            PlayErrCode.set("exc:" + e.getClass().getSimpleName());
             mPlayerEventListener.onError();
         }
     }
@@ -116,6 +118,7 @@ public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorLis
         try {
             mMediaPlayer.prepareAsync();
         } catch (IllegalStateException e) {
+            PlayErrCode.set("exc:" + e.getClass().getSimpleName());
             mPlayerEventListener.onError();
         }
     }
@@ -213,6 +216,8 @@ public class IjkPlayer extends AbstractPlayer implements IMediaPlayer.OnErrorLis
 
     @Override
     public boolean onError(IMediaPlayer mp, int what, int extra) {
+        // I1（2026-09-28）：what/extra 此前被丢弃 —— 透传给兜底链归因（只加可见性，判定行为不变）
+        PlayErrCode.set("Ijk:" + what + "/" + extra);
         mPlayerEventListener.onError();
         return true;
     }

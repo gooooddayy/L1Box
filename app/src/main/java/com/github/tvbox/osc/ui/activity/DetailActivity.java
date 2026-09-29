@@ -175,7 +175,7 @@ public class DetailActivity extends BaseVbActivity<ActivityDetailBinding> {
         mBinding.previewPlayerPlace.setVisibility(showPreview ? View.VISIBLE : View.GONE);
 
         mBinding.mGridView.setHasFixedSize(true);
-        // 选集:一行3集,显示三行,上下滑动
+        // 选集:一行3集,约6行,网格内部上下滚动（H2 2026-09-28：恢复原设计，行数按用户口径 4→6 行）
         mBinding.mGridView.setLayoutManager(new V7GridLayoutManager(this.mContext, 3));
         mBinding.mGridView.addItemDecoration(new GridSpacingItemDecoration(3, 20, true));
 
@@ -222,7 +222,11 @@ public class DetailActivity extends BaseVbActivity<ActivityDetailBinding> {
                 }
                 try {
                     // 必须经 XPopup.Builder 包装，直接 show() 会因 popupInfo 为 null 崩溃
-                    new XPopup.Builder(DetailActivity.this).asCustom(new CastDialog(DetailActivity.this, url, title)).show();
+                    // 投屏地址同样走局域网转发端点（见 PlayerHelper.wrapForCast）：设备自己去上游取流，
+                    // 天生带不上请求头，缺头就是 403。取不到局域网 IP 时原样退回。
+                    String castUrl = PlayerHelper.wrapForCast(url,
+                            playFragment == null ? null : playFragment.getPlayingHeaders());
+                    new XPopup.Builder(DetailActivity.this).asCustom(new CastDialog(DetailActivity.this, castUrl, title)).show();
                 } catch (Exception e) {
                     ToastUtils.showShort("投屏暂不可用");
                 }
@@ -960,6 +964,10 @@ public class DetailActivity extends BaseVbActivity<ActivityDetailBinding> {
         if (vodInfo != null && vodInfo.seriesMap.get(vodInfo.playFlag).size() > 0) {
             VodInfo.VodSeries vod = vodInfo.seriesMap.get(vodInfo.playFlag).get(vodInfo.playIndex);
             String url = TextUtils.isEmpty(playFragment.getFinalUrl()) ? vod.url : playFragment.getFinalUrl();
+            // bw（2026-09-24）：兜底解包。正常路径上这里本来就是站点原始直链（getFinalUrl 返回 mCurrentUrl，
+            // 在净化之前赋值、全文件唯一赋值点），但"外部播放器/投屏正在用"的时序无法穷举 ——
+            // 命中本机转发端点就还原成原地址，其他形态一字不改。见 PlayerHelper.unwrapForward。
+            url = PlayerHelper.unwrapForward(url);
             if (TextUtils.isEmpty(url)) {
                 ToastUtils.showShort("资源异常,请稍后重试");
                 return;

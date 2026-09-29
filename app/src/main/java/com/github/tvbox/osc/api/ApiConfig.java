@@ -78,6 +78,25 @@ public class ApiConfig {
     private volatile boolean sitePoolSettled = false;
 
     /**
+     * A（缓存清单先开搜，2026-09-24）：本次进程启动是否**已经尝试过**用本地缓存预热站点池。
+     * one-shot 护栏 —— 试过就不再试，保证一次启动最多读一次缓存文件。
+     * 池一旦被网络配置填上就非空了，预热条件本身也不再成立，这里是第二道保险。
+     */
+    private volatile boolean cacheBootDone = false;
+
+    /**
+     * A：当前站点池是否来自**冷启动预热**（该订阅地址上次成功拉取的原文），而非网络拉取。
+     *
+     * true 期间网络配置还在途中 ⇒ 池一定还会被替换。搜索页据此做两件事：
+     *   ① 0 结果时**不判空**（否则缓存轮 0 结果会被当成"这个源里没有这部片"，假空回归）；
+     *   ② 首波有结果后启动**补全守卫**，等网络池到达再追加一轮。
+     *
+     * **必须在网络请求一有结论时置回 false**（成功 / 内容异常回退 / 重试用尽），
+     * 否则它会永久为 true，让搜索页的等待没有出口（无限转圈）。
+     */
+    private volatile boolean bootPoolFromCache = false;
+
+    /**
      * 最近一次装载后的实际站点数（-1 = 从未装载过）。
      * 站点池为空在各层都是"正常返回"（装载确实完成了），边界上分不出"加载完了但确实为空"
      * 与"本来就没内容"，只有把结果数量带出去，首页才可能把这种"启用成功却搜不出东西"说清楚。
@@ -230,6 +249,30 @@ public class ApiConfig {
             return;
         }
         File cache = new File(App.getInstance().getFilesDir().getAbsolutePath() + "/" + MD5.encode(apiUrl));
+        // ── A：冷启动预热（2026-09-24）────────────────────────────────────────
+        // 网络配置还在路上时，先用**本地址上次成功拉取的原文**把站点池填上，
+        // 让"打开 App 就能搜、结果立刻出"，而不是干等 4.7~16.5 秒。
+        //
+        // 触发条件是四个"与"：非改DNS返回(useCache=false) ∧ 本启动没试过 ∧ 池为空 ∧ 缓存文件在。
+        // 池为空这一条同时挡住了"切源"场景 —— 切源是运行中操作，那一刻池里还是旧源站点（非空），
+        // 所以切源**压根不走这条路**，仍是"网络请求 → parseJson 覆盖池"的老路径。
+        //
+        // 刻意**不回调 callback**：预热只填数据，不代表"配置装载完成"。
+        // 若在这里 callback.success()，首页会以为网络配置已到、提前走 jar 流程。
+        if (!useCache && !cacheBootDone && !bootPoolFromCache && !hasSubscription() && cache.exists() && cache.length() > 0) {
+            cacheBootDone = true;
+            try {
+                parseJson(apiUrl, cache);
+                bootPoolFromCache = true;
+                System.out.println("L1Sub: 缓存预热 地址hash=" + MD5.encode(apiUrl)
+                        + " 站点数=" + lastSiteCount + "（网络配置到达后自动补全）");
+            } catch (Throwable th) {
+                // 缓存坏掉（历史遗留的坏文件）只静默跳过，**绝不删除** ——
+                // 删文件不可逆，而它最多几 KB，不值得为它冒一次误删的风险（沿用 useCacheFallback 的原则）。
+                bootPoolFromCache = false;
+                th.printStackTrace();
+            }
+        }
         if (useCache && cache.exists()) {
             try {
                 parseJson(apiUrl, cache);
@@ -299,6 +342,10 @@ public class ApiConfig {
                 .execute(new AbsCallback<String>() {
                     @Override
                     public void onSuccess(Response<String> response) {
+                        // A：网络配置已到达。无论接下来走"解析成功"还是"内容异常回退到缓存"，
+                        // 池的归属都不再是冷启动预热的那份缓存了 —— 护栏必须在这里就撤掉，
+                        // 否则搜索页会一直等一个永远不会再来的"池变化"（表现为无限转圈）。
+                        bootPoolFromCache = false;
                         try {
                             String json = response.body();
                             parseJson(apiUrl, json);
@@ -349,6 +396,9 @@ public class ApiConfig {
                                     delay);
                             return;
                         }
+                        // A：重试用尽 ⇒ 网络侧有了结论，预热护栏撤掉（此刻起池不会再变）。
+                        // 注意必须放在 `attempt < 2` 判断**之后**：重试途中池确实还可能有变化。
+                        bootPoolFromCache = false;
                         if (useCacheFallback(apiUrl, cache, activity, "网络不佳，已使用缓存的订阅配置")) {
                             callback.success();
                             return;
@@ -1191,6 +1241,16 @@ public class ApiConfig {
      */
     public boolean isSitePoolSettled() {
         return sitePoolSettled;
+    }
+
+    /**
+     * A（缓存清单先开搜）：当前站点池是否来自**冷启动预热**（本地缓存原文）。
+     *
+     * 为 true 表示网络配置还在途中、池随后一定会被替换。搜索页据此：
+     * ① 0 结果时不给空态（转去 S3 等网络池）；② 首波有结果后启动补全守卫。
+     */
+    public boolean isPoolFromCache() {
+        return bootPoolFromCache;
     }
 
     /**

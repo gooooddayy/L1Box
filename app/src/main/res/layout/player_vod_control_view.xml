@@ -725,4 +725,45 @@
                 android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
+
+<!--    续播跳转弹层：进播放页只弹一次"点击跳转 xx:xx"，点它才跳到上次位置，
+        点弹层以内以外的其它地方、或 5 秒后自动淡出。这样"从头播"与"想续播"两不误：
+        不再一进播放页就被跳走，用户自己有选择余地。
+        视觉：**半透明淡绿底 + 白字**（2026-09-24 二轮：用户要求字色改白；淡绿底只有 45%
+        不透明度、背后是视频画面，故给白字配一层淡黑投影保证亮场景下也读得清。
+        一轮曾用深绿字 #FF1B5E20，用户看后要求改白）、小内边距小字号（用户反馈"太大画幅"；
+        原为深色底白字 24/14dp 15sp）。用独立的 shape_player_resume_jump_bg，
+        与连播浮层的深色面板分开，互不牵连。
+        注意（与上面的连播浮层同一条纪律）：本浮层位于画面正中（非顶部）、不含 ProgressBar、
+        文案不以「正在」开头，因此不会被横幅清扫器误判成 jar 初始化横幅。 -->
+    <FrameLayout
+        android:id="@+id/resume_jump_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:clickable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/resume_jump_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/shape_player_resume_jump_bg"
+            android:clickable="true"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="7dp"
+            android:shadowColor="#B3000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="3"
+            android:textColor="@color/white"
+            android:textSize="13sp"
+            tools:text="点击跳转 00:12:34" />
+    </FrameLayout>
 </FrameLayout>

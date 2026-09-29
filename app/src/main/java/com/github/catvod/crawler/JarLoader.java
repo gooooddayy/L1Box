@@ -35,6 +35,35 @@ public class JarLoader {
     /** 加固 jar 初始化刚完成后的静默截止时刻（elapsedRealtime）。jar 的 Go 代理在 init 返回后才真正 ready */
     private final ConcurrentHashMap<String, Long> proxyQuietUntil = new ConcurrentHashMap<>();
     /**
+     * 站点 key → 其所属 jar 的 key（2026-09-28 ce）。
+     *
+     * 为什么需要：`/proxy` 一直按 `recentJarKey`（"最近一次取蜘蛛所用的 jar"）路由，
+     * 而请求里的 `do` 才是**真正该处理它的站点 key**。两者在"边看片边搜别的站点"这类
+     * 交叉场景下会不一致，于是请求被送进另一个 jar 的 Proxy ⇒ 返回 null ⇒ 播放必然失败。
+     * 这里在 `getSpider` 时把 `站点key → jarKey` 记下来，路由优先用 `do` 查到的 jar。
+     */
+    private final ConcurrentHashMap<String, String> siteJarKeys = new ConcurrentHashMap<>();
+
+    /**
+     * `/proxy` 的 **`do` → jarKey** 路由表（2026-09-29 cf 轮实测后补）。
+     *
+     * 🔴 为什么 `siteJarKeys` 从来查不中（cf 轮 13 次 `do` 全 miss 的真根因）：
+     * `/proxy` 请求里的 `do` 是 **jar 内部自造的短标识**（实测值只有 `hmys`、`ck` 两种），
+     * 而 `siteJarKeys` 存的是 `sourceBean.getKey()`（配置里的**站点 key**，如 `海绵`/`WexAiReBo`）。
+     * **两者是不同命名空间** ⇒ 查表必然 miss ⇒ 每次都回退 `recentJarKey` 碰运气。
+     * 实测证据：同一个 `do=ck` 被路由到两个不同 jar（`0b9565d6a6` / `ae48218142`），
+     * 它们分属不同站点，全靠"刚好是先调用的那个"侥幸命中。
+     *
+     * ⇒ 真正的链路是：**jar 自己知道 `do` 该由谁来处理**，我们只能"从请求里学"。
+     * 做法：某个 jar 的 `Proxy` **成功处理过** `do=X`，就把 `X → 该 jar` 记下来；
+     * 下次同一个 `do` 再来，直接路由到学到的 jar，不再依赖 `recentJarKey` 的时序巧合。
+     * 只登记"放行且返回非 null"的成功样本，失败的（如返回 null 的）不登记，避免把错路由固化。
+     */
+    private final ConcurrentHashMap<String, String> doJarKeys = new ConcurrentHashMap<>();
+
+    /** /proxy 诊断日志节流表（2026-09-28）：tag → 上次打印时刻，同一 tag 3 秒内只打一次 */
+    private final ConcurrentHashMap<String, Long> proxyLogAt = new ConcurrentHashMap<>();
+    /**
      * 静默期长度。真机日志逐条配对实测（binary start begin → health started=true）：
      * 544 / 564 / 573 / 560 / 545 / 566 ms，仅首次解压那次 1753ms。
      * 取 800ms 覆盖常规收尾；早先按 1.4~1.6 秒的估算定 2000ms 属过度保护，会让首轮多丢结果。
@@ -70,6 +99,69 @@ public class JarLoader {
     /** 装载序号现值（单调不减；只用于"变没变"的比较，不解释绝对值） */
     public static long loadSeq() {
         return LOAD_SEQ.get();
+    }
+
+    /**
+     * 已记过装载结论的 jar key。**同一个 jar 只贡献一次序号**（2026-09-24 bt）。
+     *
+     * 为什么必须去重：`getSpider` 只在**成功**时把 spider 放进 spiders 表；被跳过的站点
+     * （加固不可用 / 装载失败 / 主 jar 未挂载）下一次搜索会**再走一遍** `loadJarInternal`，
+     * 而那里的 finally 原本无条件自增 —— 于是一个始终装不上的 jar 会让 loadSeq **每轮搜索都 +1**。
+     * 搜索侧"池签名变没变"的判据于是永远为假，S3 复检永不收敛：真机实测生僻词搜索
+     * **68 轮 / 201 秒 / 0 命中 / 从不给空态**，界面一直停在"加载中"。
+     * 装载序号要回答的是"本轮搜索有没有和**某次装载**重叠"，重复查询不是装载事件。
+     */
+    private static final Set<String> SEQ_COUNTED = ConcurrentHashMap.newKeySet();
+
+    /**
+     * 正在装载的主 jar（csp.jar / csp_home.jar）数量。
+     *
+     * 搜索侧要用它区分两件完全不同的事：主 jar **还在装载**时，依赖它的站点 getSpider 会
+     * **立刻**返回空站点（真机 3/3 复现 8ms 就摆出"暂无数据"），这是假空，必须继续等；
+     * 装载**已有结论**却还是空站点，那才是真的不可用，可以诚实给空态。
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger MAIN_INFLIGHT =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** 主 jar 装载是否已有结论（true＝没有正在进行的装载）。返回 false 时搜索侧不得判空。 */
+    public static boolean mainSettled() {
+        return MAIN_INFLIGHT.get() <= 0;
+    }
+
+    /**
+     * 因 jar 未就绪 / 加固不可用而被跳过的"空站点"累计次数。
+     *
+     * 只用于诊断：搜索侧取本轮增量打一行"跳过=N"，就回答了"这一轮的 0 结果里有多少站点
+     * 根本没被真正问过"。**不逐条打日志** —— 一次搜索可能有几十个站点，逐条会淹掉日志。
+     */
+    private static final java.util.concurrent.atomic.AtomicLong SPIDER_NULL =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    public static long spiderNullSeq() {
+        return SPIDER_NULL.get();
+    }
+
+    /**
+     * 本会话内**曾经被跳过**的站点 key 账本（bu，2026-09-24）。
+     *
+     * 与 {@link #SPIDER_NULL} 的分工：那是"跳过次数"（同一个坏站点每轮搜索都再 +1），这是"跳过了
+     * 哪些站点"（**去重**）。搜索侧要的是后者 —— 判空只该关心"这一轮有没有**新面孔**站点没被问到"：
+     * 老面孔（每次搜索都装不上的站点）拦不住判空，否则源里只要有一个本机跑不了的 jar，就永远给不出
+     * "暂无数据"（回到 A2 之前那种无限转圈）；新面孔才可能是瞬时的（首次下载失败、代理刚起），
+     * 值得再搜一轮。真机实证：每轮日志都 `跳过=1`，而同一个冷门词两分钟前在剧圈99 是搜得到的。
+     */
+    private static final Set<String> SKIPPED_KEYS = ConcurrentHashMap.newKeySet();
+
+    /** 跳过账本快照（调用方做差集用；返回副本，不影响账本本身） */
+    public static Set<String> skippedKeys() {
+        return new java.util.HashSet<>(SKIPPED_KEYS);
+    }
+
+    /** 记一次"空站点"并返回它（三处跳过共用一处计数；同时把站点 key 记进账本，见 SKIPPED_KEYS） */
+    private static Spider skipNull(String key) {
+        SPIDER_NULL.incrementAndGet();
+        if (key != null && !key.isEmpty()) SKIPPED_KEYS.add(key);
+        return new SpiderNull();
     }
 
     /**
@@ -147,7 +239,18 @@ public class JarLoader {
         // 跨配置重载复用同一个 DexClassLoader，而 native 状态的生命周期正是那个 ClassLoader 的
         // 生命周期 —— 配置重载时重置它们会造出"账本没了、代理还在跑、又没人接手"的空窗。
         // 换届只在 ProtectedInitJar.init 成功、且该 jar 确实重启了共享代理时发生（occupyProxy）。
-        return loadClassLoader(cache, "main");
+        // 与上面 classLoaders.clear() 对称：这一届的"装载结论账本"一并作废，重装的 jar 重新计一次
+        SEQ_COUNTED.clear();
+        // 主 jar 装载期间的公开状态（见 MAIN_INFLIGHT）：搜索侧据此区分"还没等到"与"装不上"。
+        // finally 减回去是为了**任何**返回路径（含抛异常）都不会把状态永久卡在"装载中"。
+        MAIN_INFLIGHT.incrementAndGet();
+        boolean ok = false;
+        try {
+            ok = loadClassLoader(cache, "main");
+        } finally {
+            MAIN_INFLIGHT.decrementAndGet();
+        }
+        return ok;
     }
 
     private boolean loadClassLoader(String jar, String key) {
@@ -278,7 +381,9 @@ public class JarLoader {
         try {
             return doLoadJarInternal(jar, md5, key);
         } finally {
-            LOAD_SEQ.incrementAndGet();
+            // 去重（见 SEQ_COUNTED）：同一个 jar 只在**首次**有装载结论时计一次。
+            // 装不上的 jar 每次搜索都会被重新查询一遍，无条件自增会让序号永远在动。
+            if (SEQ_COUNTED.add(key)) LOAD_SEQ.incrementAndGet();
         }
     }
 
@@ -400,6 +505,7 @@ public class JarLoader {
             jarMd5 = urls.length > 1 ? urls[1].trim() : "";
         }
         recentJarKey = jarKey;
+        siteJarKeys.put(key, jarKey);   // ce：/proxy 按 do 找 jar 的路由凭据
         if (spiders.containsKey(key))
             return spiders.get(key);
         DexClassLoader classLoader = null;
@@ -409,13 +515,13 @@ public class JarLoader {
             classLoader = loadJarInternal(jarUrl, jarMd5, jarKey);
         }
         if (classLoader == null)
-            return new SpiderNull();
+            return skipNull(key);
         try {
             // Guard 类加固 jar 防护：此类 jar 的实例构造会走原生 DexNative 引导，
             // 若其内部 loader 未就绪（如宿主签名不在 jar 白名单），原生层会直接 abort 杀死进程
             // （SIGABRT 无法被 Java try-catch 捕获）。创建前先检查，未就绪则降级为空站点跳过。
             if (isGuardJarBroken(classLoader))
-                return new SpiderNull();
+                return skipNull(key);
             Spider sp = (Spider) classLoader.loadClass("com.github.catvod.spider." + clsKey).newInstance();
             sp.init(App.getInstance(), ext);
 //            if (!jar.isEmpty()) {
@@ -426,7 +532,7 @@ public class JarLoader {
         } catch (Throwable th) {
             th.printStackTrace();
         }
-        return new SpiderNull();
+        return skipNull(key);
     }
 
     /**
@@ -497,7 +603,27 @@ public class JarLoader {
     }
 
     public Object[] proxyInvoke(Map params) {
-        String key = recentJarKey;
+        // ce（2026-09-28）：路由优先用请求里的 `do`（真正该处理它的站点 key）→ 它的 jar；
+        // 查不到才回退 `recentJarKey`（行为与改动前一致）。原来只用 recentJarKey，
+        // 在"边看片边搜别的站点"这类交叉场景下会把请求送进另一个 jar 的 Proxy ⇒ 返回 null ⇒ 播放必失败。
+        String doKey = String.valueOf(params == null ? "" : params.get("do"));
+        // 路由优先级（2026-09-29 cf 轮修正）：
+        // ① `doJarKeys`：从历史成功请求里学到的 `do → jar`（最可靠，直接回答"这个 do 该谁处理"）
+        // ② `siteJarKeys`：站点 key 命中（命名空间通常对不上，留着是为了兼容 do==站点key 的配置）
+        // ③ `recentJarKey`：都没有才回退（改动前的唯一依据）
+        String learned = doKey.isEmpty() ? null : doJarKeys.get(doKey);
+        boolean hitLearned = learned != null && !learned.isEmpty();
+        boolean hitSite = !hitLearned && siteJarKeys.containsKey(doKey);
+        String mapped = hitLearned ? learned : siteJarKeys.get(doKey);
+        // ⚠️ ch（2026-09-29）：路由来源**必须在这里定死**再传下去，不能到 proxyLog 里再判断。
+        // 因为成功会走到 `doJarKeys.put(doKey, key)`，而 put 早于 proxyLog ⇒ 打印时表里已含本条
+        // ⇒ "表里有没有这个 do"恒为真（cg 轮实测：`表规模=do表1` 是"含本条之后"的数，
+        // 看它推不出"本次路由用了 do"）。原实现就是犯了这个错，标成 `recent(回退)` 纯属侥幸对。
+        String routeSrc = hitLearned ? "do(学到)"
+                : (hitSite ? "do(站点key)" : "recent(回退)");
+        boolean routeDo = mapped != null && !mapped.isEmpty();
+        String key = routeDo ? mapped : recentJarKey;
+        long proxyT0 = SystemClock.elapsedRealtime();
         // 原生就绪门禁（2026-09-13）：加固 jar 的本地代理尚未就绪时，jar 内部会把 null 对象
         // 交给 DexNative.proxyInvoke，native 直接 abort 整个进程（JNI DETECTED ERROR，Java 层 catch 不到）。
         // 所以这里只能"事前拒绝"：初始化窗口内、以及初始化刚完成的一小段静默期内一律不碰 native，
@@ -507,14 +633,37 @@ public class JarLoader {
         // 再启动自己的，而 /proxy 是按 recentJarKey 路由 —— 若此刻进来的请求属于**另一个** jar，
         // 下面按 key 的判断对它完全无效，它会打到正被 killall 的原生对象上 → obj==null → SIGABRT。
         // 所以门禁必须是"全进程任何一个 jar 在初始化 → 所有 /proxy 一律拒绝"。
-        if (ProtectedInitJar.nativeInitInProgress()) return proxyNotReady();
-        if (isNativeWindow(key)) return proxyNotReady();
+        if (ProtectedInitJar.nativeInitInProgress()) return proxyDeny(params, key, "拒:原生初始化中", proxyT0, routeSrc);
+        if (isNativeWindow(key)) return proxyDeny(params, key, "拒:初始化静默窗口内", proxyT0, routeSrc);
         // 进程级单飞路由（2026-09-13）：/proxy 只准调用"代理持有者"的 Proxy 类。
         // 非 holder 的加固 jar 跳过了 startGoProxy，其原生代理对象恒为 null，打进去必 abort；
         // 一律事前 503（普通 jar 不经 startGoProxy，无此风险，行为与从前完全一致）。
-        // 持有者身份（含它的 key）自批次三起由 ProtectedInitJar 在原生锁内单一维护，
-        // 不存在"身份换了、key 还没换"这类双份状态各自的过期窗口。
-        if (protectedJarKeys.contains(key) && !key.equals(ProtectedInitJar.proxyHolderKey())) return proxyNotReady();
+        //
+        // 🔴 2026-09-28 修正：这里原来是 `!key.equals(proxyHolderKey())` —— 它把**手绑成功的 jar**
+        // 也一起挡了。手绑成功本身（"承接已有的本地代理"）就证明它的原生代理引用有效，只是
+        // `occupyProxy()` 从来不认它 ⇒ 它的代理型站点被**永久** 503。
+        // 实测：`WexAiYueYue` 下发的 `127.0.0.1:9978/proxy?do=…` 被瞬时拒绝（预取 7 ms 失败、
+        // jar 的 localProxy 从未被调用），cb/cc/dd 三轮 /proxy 一次都没成功。
+        // 现在改由 `proxyCapable()` 判定：holder 照旧放行；手绑 jar 只有在"绑定时那一任持有者
+        // 至今仍是当前持有者"（＝中途没换届）时才放行 —— 防线不降级，只把被误伤的路径放回来。
+        //
+        // 🔴 2026-09-29 二次修正（ce 轮实测）：初版判据还比了「代理世代号」，而世代号**每次**
+        // occupyProxy 都 +1、与"这个 jar 还能不能用当前代理"无关（家族 jar 有 4 个，必然互相顶）。
+        // 实测 14942a7863 手绑于 gen1、两次接管后 gen=3 ⇒ 被判死，它的站点 100% 503。
+        // 现在只比持有者 key，并把"为什么拒"拆成三种可区分的措辞（原先是三种原因一句话）。
+        if (protectedJarKeys.contains(key) && !ProtectedInitJar.proxyCapable(key, null)) {
+            String why;
+            if (key.equals(ProtectedInitJar.proxyHolderKey())) {
+                why = "拒:ClassLoader 侧判定未过";   // 理论上到不了，留作自检
+            } else if (ProtectedInitJar.proxyHolderKey().isEmpty()) {
+                why = "拒:进程内无代理持有者";
+            } else if ("无".equals(ProtectedInitJar.handBoundBrief(key))) {
+                why = "拒:该jar从未手绑成功";        // 从没登记过
+            } else {
+                why = "拒:手绑后已换届";             // 登记过，但持有者已经换了人
+            }
+            return proxyDeny(params, key, why, proxyT0, routeSrc);
+        }
         try {
             Method proxyFun = proxyMethods.get(key);
             if (proxyFun != null) {
@@ -525,16 +674,97 @@ public class JarLoader {
                 //
                 // 这里比 am 多加了一条 **运行时探测**：这是全部防线里唯一不依赖"静态判据正确"的一层。
                 // 即使某个未知变体骗过了静态判据、走了普通路径装载，只要它不是 holder，就依然打不到 native。
+                // 2026-09-28：与上面的 key 门禁同一修正 —— 手绑且世代仍有效的 loader 同样放行。
                 ClassLoader mcl = proxyFun.getDeclaringClass().getClassLoader();
                 if ((ProtectedInitJar.isFamilyClassLoader(mcl) || ProtectedInitJar.probeFamily(mcl))
-                        && !ProtectedInitJar.isHolderClassLoader(mcl))
-                    return proxyNotReady();
-                return (Object[]) proxyFun.invoke(null, params);
+                        && !ProtectedInitJar.isHolderClassLoader(mcl)
+                        && !ProtectedInitJar.proxyCapable(key, mcl))
+                    return proxyDeny(params, key, "拒:ClassLoader 终审未过", proxyT0, routeSrc);
+                Object[] rs = (Object[]) proxyFun.invoke(null, params);
+                // 学习路由（2026-09-29）：只有"该 jar 真的处理出东西了"才登记，
+                // 避免把返回 null（＝这个 jar 不认这个 do）的错误路由固化下来。
+                boolean newLearned = false;
+                if (rs != null && rs.length > 0 && rs[0] != null && !doKey.isEmpty()
+                        && key != null && !key.isEmpty()) {
+                    // 只有"此前没有这个 do 的记录"才算真新学（同 do 换 jar 时不算，避免掩盖路由漂移）
+                    newLearned = !doJarKeys.containsKey(doKey);
+                    doJarKeys.put(doKey, key);
+                }
+                proxyLog(params, key, "放行 返回=" + ((rs == null || rs.length == 0) ? "null" : String.valueOf(rs[0]))
+                                + (newLearned ? " 新学到" : ""),
+                        SystemClock.elapsedRealtime() - proxyT0, routeSrc);
+                return rs;
             }
+            return proxyDeny(params, key, "拒:该 key 没有代理方法(代理未装载)", proxyT0, routeSrc);
         } catch (Throwable th) {
-
+            proxyLog(params, key, "异常:" + th, SystemClock.elapsedRealtime() - proxyT0, routeSrc);
         }
         return null;
+    }
+
+    /** 拒绝出口：打一行诊断日志再返回 503（原来是静默拒绝，导致"站点成片播放失败"查不到原因） */
+    private Object[] proxyDeny(Map params, String key, String verdict, long t0) {
+        return proxyDeny(params, key, verdict, t0, null);
+    }
+
+    private Object[] proxyDeny(Map params, String key, String verdict, long t0, String routeSrc) {
+        proxyLog(params, key, verdict, SystemClock.elapsedRealtime() - t0, routeSrc);
+        return proxyNotReady();
+    }
+
+    /**
+     * `/proxy` 诊断日志（2026-09-28）。
+     *
+     * 为什么必须加：/proxy 原来**全程静默** —— 站点下发的代理地址失败了，日志里只有一句
+     * `净化 预取失败或超时(本地代理地址/HttpException)`，既不知道我们回了什么码、也不知道
+     * 门禁为什么拒绝，只能靠读代码猜。
+     *
+     * 节流：同一个 (do + 判定前缀) 3 秒内只打一次。HLS 场景下 /proxy 会被分片请求打爆，
+     * 不节流会把日志冲成噪声。
+     */
+    private void proxyLog(Map params, String key, String verdict, long costMs) {
+        proxyLog(params, key, verdict, costMs, null);
+    }
+
+    /**
+     * @param routeSrc 调用方在**决定路由的那一刻**定死的来源串，取值：
+     *                 `do(学到)` / `do(站点key)` / `recent(回退)`；null＝旧调用点按回退计。
+     *
+     * ⚠️ 2026-09-29 修正（ce 轮实测暴露）：原来这里写的是
+     * `route = key.equals(recentJarKey) ? "recent" : "do"` —— **判据用错变量、语义判反**。
+     * 取链前刚 `getSpider()` 过该站点（`recentJarKey = jarKey`），紧接着就发生 /proxy 调用
+     * ⇒ `key` 与 `recentJarKey` **天然相等** ⇒ 恒打 `recent`。ce 轮 56 条日志里 `do` 出现 0 次，
+     * 一度被误读成"按 do 路由没生效"（实际功能正常，只是标签写反）。
+     * ⇒ **日志字段本身也要用"已知答案的样本"验证一次取值**，能出数 ≠ 数是对的。
+     *
+     * ⚠️ 2026-09-29 二次修正（cg 轮实测暴露，ch 修）：cf 版改成了"到这里查 `doJarKeys.containsKey(do)`"
+     * —— 仍然错，因为**成功路径上 `doJarKeys.put(doKey, key)` 就在调用本函数之前**（见 proxyInvoke），
+     * 于是 `containsKey` 恒为真 ⇒ 表规模与来源全是**自证**的。cg 轮 `表规模=do表1` 就是这么来的：
+     * 它是"含本条之后"的数，不能推出"本次路由命中了表"。
+     * ⇒ 现在由调用方在**put 之前**把来源串定死传进来，本函数只负责打印。
+     */
+    private void proxyLog(Map params, String key, String verdict, long costMs, String routeSrc) {
+        try {
+            String doKey = String.valueOf(params == null ? "?" : params.get("do"));
+            String tag = doKey + '|' + (verdict.length() > 6 ? verdict.substring(0, 6) : verdict);
+            long now = SystemClock.elapsedRealtime();
+            Long last = proxyLogAt.get(tag);
+            if (last != null && now - last < 3000) return;
+            proxyLogAt.put(tag, now);
+            String route = routeSrc == null ? "recent(回退)" : routeSrc;
+            // 表规模随日志一起打：诊断"do 路由表到底有没有被填起来"（cf 轮 13 次全 miss 就是因为两张表都空）
+            System.out.println("本地代理：do=" + doKey + " key=" + briefJarKey(key) + " 路由=" + route
+                    + " 持有者=" + ProtectedInitJar.proxyHolderBrief()
+                    + " 手绑账本=" + ProtectedInitJar.handBoundBrief(key)
+                    + " 表规模=do表" + doJarKeys.size() + "/站点表" + siteJarKeys.size()
+                    + " 判定=" + verdict + " 耗时=" + costMs + "ms");
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String briefJarKey(String key) {
+        if (key == null || key.isEmpty()) return "?";
+        return key.length() <= 10 ? key : key.substring(0, 10);
     }
 
     /**

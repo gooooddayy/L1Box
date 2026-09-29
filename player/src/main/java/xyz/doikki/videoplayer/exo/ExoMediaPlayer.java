@@ -26,6 +26,7 @@ import com.google.android.exoplayer2.video.VideoSize;
 import java.util.Map;
 
 import xyz.doikki.videoplayer.player.AbstractPlayer;
+import xyz.doikki.videoplayer.player.PlayErrCode;
 
 public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
 
@@ -335,10 +336,15 @@ public class ExoMediaPlayer extends AbstractPlayer implements Player.Listener {
     @Override
     public void onPlayerError(@NonNull PlaybackException error) {
         errorCode = error.errorCode;
+        // I1（2026-09-28）：错误码透传给兜底链归因（只加可见性，判定行为不变）。
+        // 老版 Exo 的 PlaybackException 只有 errorCode，没有 errorCodeName，归因按数字段做（见 classify）。
+        PlayErrCode.set("Exo:" + error.errorCode);
         // 带上隧道模式标记：部分机型上 setTunnelingEnabled(true) 会导致"有声音没画面"，
         // 本轮先不改行为，只让这条日志足以判断错误是否集中在隧道模式下（含重试路径的可检索标识）。
         Log.e("tag--", "errorCode=" + error.errorCode + " tunneling=on(工程固定) retryPath=" + (path != null));
         if (path != null) {
+            // 重试路径：这次错误的账先销掉 —— 重试再失败会重新 onPlayerError 带来新码，不留下旧码串染
+            PlayErrCode.set("");
             setDataSource(path, headers);
             path = null;
             prepareAsync();

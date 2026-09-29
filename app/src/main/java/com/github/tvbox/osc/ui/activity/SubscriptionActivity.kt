@@ -322,7 +322,7 @@ class SubscriptionActivity : BaseVbActivity<ActivitySubscriptionBinding>() {
                     }
                     mSubscriptionAdapter.notifyItemChanged(position)
                     ToastUtils.showShort("已切换到: " + (item.lines.firstOrNull { it.sourceUrl == pickedUrl }?.sourceName ?: ""))
-                }.setTitle("切换影视源")
+                }.setCurrentUrl(item.activeLineUrl).setTitle("切换影视源")
             )
             .show()
     }

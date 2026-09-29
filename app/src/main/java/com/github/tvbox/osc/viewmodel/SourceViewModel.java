@@ -526,7 +526,12 @@ public class SourceViewModel extends ViewModel {
     public void getSearch(String sourceKey, String wd, boolean quick) {
         SourceBean sourceBean = sourceKey == null ? null : ApiConfig.get().getSource(sourceKey);
         if (sourceBean == null) {
-            searchResult.postValue(null);
+            // bv（2026-09-24）：这里必须走 EventBus。搜索结果的**实际**派发通道是 EventBus
+            // （见本文件 json()/xml() 与下面 onError 的分支），而 searchResult 这个 LiveData
+            // 全工程**没有任何观察者**。原来只 postValue 等于"这个站点永远不回调" ⇒ 搜索侧的完成计数
+            // 漏一格 ⇒ 本轮只能等满 30 秒看门狗（bu 复测 A2 每轮 30 秒的根因之一）。
+            // 冷启时池正从缓存池切网络池，getSource(key) 落空概率恰好最高 —— 与"只有冷启立刻搜才这样"一致。
+            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, null));
             return;
         }
         int type = sourceBean.getType();
@@ -607,7 +612,9 @@ public class SourceViewModel extends ViewModel {
                     }
                 });
         } else {
-            searchResult.postValue(null);
+            // 同上（bv，2026-09-24）：类型不在 {0,1,3,4} 的站点也必须回一次 EventBus 回调，
+            // 否则它这一路的完成计数永远差一格。
+            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SEARCH_RESULT, null));
         }
     }
     // searchContent

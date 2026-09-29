@@ -66,6 +66,10 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
 
     protected int[] mVideoSize = {0, 0};
 
+    /** 视频旋转角度（0/90/180/270），由内核的 MEDIA_INFO_VIDEO_ROTATION_CHANGED 上报。
+     *  它只作用于画面渲染，**不会**改写 mVideoSize —— 两者是独立通道。 */
+    protected int mVideoRotation = 0;
+
     protected boolean mIsMute;//是否静音
 
     //--------- data sources ---------//
@@ -547,6 +551,8 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
                 mPlayerContainer.setKeepScreenOn(true);
                 break;
             case AbstractPlayer.MEDIA_INFO_VIDEO_ROTATION_CHANGED:
+                // 记下来供调用方换算显示用（画面本身的旋转仍走 mRenderView，逻辑不变）
+                mVideoRotation = extra;
                 if (mRenderView != null) mRenderView.setVideoRotation(extra);
                 break;
         }
@@ -947,6 +953,15 @@ public class VideoView<P extends AbstractPlayer> extends FrameLayout
     @Override
     public int[] getVideoSize() {
         return mVideoSize;
+    }
+
+    /**
+     * 获取视频旋转角度（0/90/180/270）。
+     * 与 {@link #getVideoSize()} 独立：宽高是编码尺寸，旋转不改写它。
+     */
+    @Override
+    public int getVideoRotation() {
+        return mVideoRotation;
     }
 
     /**

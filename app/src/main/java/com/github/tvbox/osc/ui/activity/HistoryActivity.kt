@@ -27,6 +27,9 @@ class HistoryActivity : BaseVbActivity<ActivityHistoryBinding>() {
 
     private fun initView() {
         setLoadSir(mBinding.mGridView)
+        // 读库是异步的（IO 线程 + Room 首次打开还可能更慢），注册完状态框架要立刻给加载态，
+        // 否则数据回来之前是一段真正的空白窗口（冷启动时因为读库更慢，这段空白尤其明显）。
+        showLoading()
 
         mBinding.mGridView.setHasFixedSize(true)
         mBinding.mGridView.setLayoutManager(GridLayoutManager(this, 3))
@@ -80,7 +83,7 @@ class HistoryActivity : BaseVbActivity<ActivityHistoryBinding>() {
     private fun initData() {
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val allVodRecord = RoomDataManger.getAllVodRecord(100)
+            val allVodRecord = RoomDataManger.getAllVodRecord()
             val vodInfoList: MutableList<VodInfo> = ArrayList()
             for (vodInfo in allVodRecord) {
                 if (vodInfo.playNote != null && vodInfo.playNote.isNotEmpty()) vodInfo.note =

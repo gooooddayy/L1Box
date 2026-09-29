@@ -14,11 +14,14 @@ import com.github.tvbox.osc.player.thirdparty.MXPlayer;
 import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
 import com.github.tvbox.osc.player.thirdparty.RemoteTVBox;
 import com.github.tvbox.osc.player.thirdparty.VlcPlayer;
+import com.github.tvbox.osc.server.RemoteServer;
 import com.orhanobut.hawk.Hawk;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -301,22 +304,25 @@ public class PlayerHelper {
     }
 
     public static Boolean runExternalPlayer(int playerType, Activity activity, String url, String title, String subtitle, HashMap<String, String> headers, long progress) {
+        // #8（09-23 定稿）：外部播放器改喂**本机转发端点**（见 wrapForExternalPlayer）。
+        // 不参与的只有两档（RemoteTVBox 是"推给另一台设备"、VLC 不吃请求头），见 isHeaderForwardPlayer。
+        String playUrl = isHeaderForwardPlayer(playerType) ? wrapForExternalPlayer(url, headers) : url;
         boolean callResult = false;
         switch (playerType) {
             case 10: {
-                callResult = MXPlayer.run(activity, url, title, subtitle, headers);
+                callResult = MXPlayer.run(activity, playUrl, title, subtitle, headers);
                 break;
             }
             case 11: {
-                callResult = ReexPlayer.run(activity, url, title, subtitle, headers);
+                callResult = ReexPlayer.run(activity, playUrl, title, subtitle, headers);
                 break;
             }
             case 12: {
-                callResult = Kodi.run(activity, url, title, subtitle, headers);
+                callResult = Kodi.run(activity, playUrl, title, subtitle, headers);
                 break;
             }
             case 13: {
-                callResult = RemoteTVBox.run(activity, url, title, subtitle, headers);
+                callResult = RemoteTVBox.run(activity, playUrl, title, subtitle, headers);
                 break;
             }
             case 14: {
@@ -325,6 +331,180 @@ public class PlayerHelper {
             }
         }
         return callResult;
+    }
+
+    /**
+     * 哪些外部播放器该走本机转发：**必须同时满足"在本机播放"＋"接收请求头"**。
+     *
+     *  - 10 MX / 12 Kodi：请求头是**拼在地址字符串后面**交给它们的（`地址|k=v&k=v`），
+     *    这正是"约 10 秒结束"的机理，是本条改动的正主；
+     *  - 11 Reex：请求头走 intent 附加项，属于"能不能每次都带头"未知的一档，一并纳入
+     *    （对本机转发而言，多覆盖一个只会更稳，不会改变上游拿到的东西）；
+     *  - **13 RemoteTVBox 必须排除**：它是把地址 **POST 给局域网里另一台设备**去播的
+     *    （`RemoteTVBox.run` → `http://<那台设备的IP>:9978/action`）。给它塞 127.0.0.1，
+     *    那台设备解析出来就是"它自己"，必然播不了 —— 这一档保持原样。
+     *  - **14 VLC 排除**：它的 run 压根不吃请求头，包装只会多一层往返。
+     */
+    private static boolean isHeaderForwardPlayer(int playerType) {
+        return playerType == 10 || playerType == 11 || playerType == 12;
+    }
+
+    /**
+     * 请求头兜底补全（从 PlayFragment 搬来，两边共用一份实现）：只在**没给** Referer 时，
+     * 按播放地址补一个同源 Referer。
+     *
+     * 为什么只补 Referer、不补 UA：工程里没有"固定 UA"的公共出口（只有一组随机浏览器 UA 的工具），
+     * 而给同一个源每次请求随机 UA 会把不确定性带进播放链路，与"稳定优先"相悖 ——
+     * UA 缺失时播放器用自带默认值，行为与改动前一致；站点显式给了 UA 的照旧原样使用。
+     *
+     * 补 Referer 的收益是明确的：防盗链校验 Referer，缺了就 403；补的是地址自身的同源前缀，
+     * 对不需要 Referer 的源无影响。只补缺失项，绝不覆盖站点已给的值。任何异常都退回原请求头。
+     *
+     * **使用边界（沿用既有口径）**：结果只喂**本机转发链路**（/l1play 与投屏码那条）和净化预取，
+     * 绝不写进播放器的默认请求头 —— 源站 Referer 会让跨域 CDN 上的分片 403。
+     */
+    public static HashMap<String, String> fillMissingHeaders(String url, HashMap<String, String> headers) {
+        try {
+            if (url == null || !url.toLowerCase().startsWith("http")) return headers;
+            if (url.contains("://127.0.0.1") || url.contains("://localhost")) return headers; // 本地地址没有防盗链
+            if (headers != null) {
+                for (String k : headers.keySet()) {
+                    if ("Referer".equalsIgnoreCase(k)) return headers;
+                }
+            }
+            int p = url.indexOf("://");
+            int slash = url.indexOf('/', p + 3);
+            String origin = (slash > 0) ? url.substring(0, slash + 1) : url;
+            HashMap<String, String> out = (headers == null) ? new HashMap<>() : new HashMap<>(headers);
+            out.put("Referer", origin);
+            PlayTrace.stage("请求头", "补同源 Referer=" + origin);
+            return out;
+        } catch (Throwable th) {
+            return headers;
+        }
+    }
+
+    /**
+     * **投屏**（bt，2026-09-24）：把交给 DLNA 设备去拉的地址，换成**局域网可达**的本机转发端点。
+     *
+     * 与外部播放器的区别只有一处：DLNA 设备是**另一台机器**，所以端点必须是本机的局域网 IP，
+     * 而不是 127.0.0.1。换来的一次性随机码里**不含**上游地址与请求头，电视只看到"本机地址＋码"。
+     *
+     * 三条退回（都退回原地址，与改动前行为完全一致，绝不制造新的失败）：
+     *  - 取不到局域网 IP（没连网 / 只开热点且网卡没地址）；
+     *  - 地址本来就是本机地址（调用方另有守卫，这里再兜一层）；
+     *  - 登记失败。
+     */
+    public static String wrapForCast(String url, HashMap<String, String> headers) {
+        try {
+            if (url == null || url.isEmpty()) return url;
+            if (isLoopbackUrl(url)) return url;
+            String lan = RemoteServer.lanIp();
+            if (lan == null || lan.isEmpty()) return url;
+            HashMap<String, String> h = headers;
+            if (h == null || h.isEmpty()) h = fillMissingHeaders(url, null);
+            String token = RemoteServer.registerCastForward(url, h);
+            if (token == null || token.isEmpty()) return url;
+            PlayTrace.stage("投屏", "改喂局域网转发端点 " + lan + " " + PlayTrace.brief(url));
+            return "http://" + lan + ":" + RemoteServer.serverPort + "/l1play?t=" + token;
+        } catch (Throwable th) {
+            th.printStackTrace();
+            return url;
+        }
+    }
+
+    /** 转发端点 URL 的长度上限：本机服务的请求行/请求头有 8KB 级上限，留足余量 */
+    private static final int EXT_FORWARD_MAX_LEN = 3500;
+
+    /**
+     * #8（2026-09-23 定稿）：把交给外部播放器的地址换成**本机转发端点**。
+     *
+     * **要解决的是"外部播放器约 10 秒就结束"**：非 m3u8 直链是原样交给 MX 的，而 MX 只把请求头
+     * **拼在地址字符串后面**（`MXPlayer.java`：`地址|k=v&k=v`）。首请求带头 → 起播成功并预读
+     * 8~12 秒；**后续续传/重连丢掉请求头 → 上游断流 → 缓冲放完即"结束"**，时间点正好对上。
+     * （m3u8 之所以没事，是因为它拿到的是本机地址，本来就不校验防盗链。）
+     *
+     * 换成 `http://127.0.0.1:<port>/l1play?u=<原地址>&h=<请求头>` 之后：请求头由 App 在服务端
+     * 统一带上，播放器**每一个**请求（首播 / 续传 / 拖动）都必然带齐；`Range` 由本机透传、
+     * `Content-Range / Content-Length / Content-Type` 原样回传（少了这步只能播、不能拖）。
+     *
+     * 三条边界都是"不多做一分"：
+     *  - **站点没下发请求头时按同源 Referer 兜底后再包**（2026-09-24 bt 改，见下）——
+     *    原来这里是"原样返回"，真机实测证明那是 D1 的根因：直链普遍不带 headers，于是这一条
+     *    把绝大多数外部播放都静默退回了；
+     *  - **已经是本机地址的原样返回**（净化后的清单 / 本地代理）—— 它本来就被外部播放器正常播；
+     *  - **拼出来超过 {@link #EXT_FORWARD_MAX_LEN} 就退回直给** —— 本机服务的请求头有长度上限，
+     *    超了连播都播不了，那比"10 秒结束"更糟。
+     *
+     * 只作用于外部播放器：内置 Exo/IJK 路径一个字不动（它们本来就走内核数据源，每次请求都带头）。
+     */
+    public static String wrapForExternalPlayer(String url, HashMap<String, String> headers) {
+        try {
+            if (url == null || url.isEmpty()) return url;
+            if (isLoopbackUrl(url)) return url;
+            // 站点**没下发请求头**时不能直接退回直给（D1 真机实测的根因）：大量站点的直链不带 headers，
+            // 原来第一条判据就把它静默退回了，MX 拿到裸地址 → 上游 403 → 约 12 秒结束，
+            // 日志里连"改喂本机转发端点"都不会出现。这里按播放地址自身的同源前缀补一个 Referer，
+            // 结果只喂**转发链路**（由本机在服务端统一带上），绝不交给播放器 —— 后者会把源站 Referer
+            // 写进播放器的默认请求头，使跨域 CDN 上的分片集体 403（见 PlayFragment 的既有说明）。
+            // 补不出（非 http 地址等）才退回直给，行为与改动前一致。
+            HashMap<String, String> h = headers;
+            if (h == null || h.isEmpty()) {
+                h = fillMissingHeaders(url, null);
+                if (h == null || h.isEmpty()) return url;
+            }
+            String full = "http://127.0.0.1:" + RemoteServer.serverPort + "/l1play"
+                    + "?u=" + URLEncoder.encode(url, "UTF-8")
+                    + "&h=" + URLEncoder.encode(new JSONObject(h).toString(), "UTF-8");
+            if (full.length() > EXT_FORWARD_MAX_LEN) {
+                PlayTrace.stage("外部", "转发地址过长(" + full.length() + ")，退回直给");
+                return url;
+            }
+            PlayTrace.stage("外部", "改喂本机转发端点 " + PlayTrace.brief(url));
+            return full;
+        } catch (Throwable th) {
+            // 包装失败绝不能让这一集播不了：退回原地址，行为与改动前一致
+            th.printStackTrace();
+            return url;
+        }
+    }
+
+    /** 是否已经是本机地址（127.0.0.1 / localhost / ::1） */
+    private static boolean isLoopbackUrl(String url) {
+        String u = url.toLowerCase();
+        return u.startsWith("http://127.0.0.1") || u.startsWith("https://127.0.0.1")
+                || u.startsWith("http://localhost") || u.startsWith("http://[::1]");
+    }
+
+    /**
+     * 复制链接用的**兜底解包**（bw，2026-09-24）：万一带上了本机转发端点，就还原成上游原地址。
+     *
+     * 为什么要有它：下载按钮的「复制链接」要给用户**站点原始直链**（能直接粘到任意下载器）。
+     * 正常路径上 `PlayFragment.getFinalUrl()` 返回的就是原始直链（`mCurrentUrl` 在净化之前赋值，
+     * 全文件唯一赋值点），转发包装只是 `wrapForExternalPlayer` 里的**局部变量**、不回流。
+     * 但"外部播放器/投屏正在用的时候点复制"这类时序无法穷举 —— 与其赌，不如在这里再解一层。
+     *
+     * 命中 `.../l1play?u=<urlencoded>[&h=...]` ⇒ 取 `u` 解码后返回；**其他任何形态（含空）⇒ 一字不改**。
+     * 整体 try/catch：解包失败也原样返回，绝不因为"复制"这个动作影响到别的什么。
+     * 正常路径上 url 里不含 `/l1play?` ⇒ 直接原样返回，与改动前逐字节相同（副作用为零）。
+     */
+    public static String unwrapForward(String url) {
+        try {
+            if (url == null || url.isEmpty()) return url;
+            int p = url.indexOf("/l1play?");
+            if (p < 0) return url;
+            String q = url.substring(p + "/l1play?".length());
+            for (String kv : q.split("&")) {
+                int eq = kv.indexOf('=');
+                if (eq <= 0) continue;
+                if (!"u".equals(kv.substring(0, eq))) continue;
+                String v = URLDecoder.decode(kv.substring(eq + 1), "UTF-8");
+                if (v != null && !v.isEmpty()) return v;
+            }
+            return url;
+        } catch (Throwable th) {
+            return url;
+        }
     }
 
     public static String getRenderName(int renderType) {
@@ -481,6 +661,31 @@ public class PlayerHelper {
         if (cfg == null) return;
         try {
             cfg.put(KEY_USER_PICKED, 1);
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+    }
+
+    /**
+     * 配置里标记"用户在播放器里手动调过画面缩放"的键。
+     *
+     * 与播放器标记（plt）同构：没有它时，"sc"每次起播都实时跟设置页的全局值走；
+     * 有它则这个片+这条线路永远用存档值、设置页再改也不动。
+     * 原实现只在"配置里没有 sc 键"时把全局值播一次种并立刻落盘，于是那个片此后
+     * 永久跟死当时的全局值 —— 设置页怎么改都不生效（正是"默认缩放不生效"的成因）。
+     */
+    public static final String KEY_SCALE_PICKED = "sct";
+
+    /** 用户在播放器里手动调过这部片（这条线路）的缩放没有。 */
+    public static boolean isScalePicked(JSONObject cfg) {
+        return cfg != null && cfg.optInt(KEY_SCALE_PICKED, 0) == 1;
+    }
+
+    /** 标记"用户手动调过这一片这一线路的缩放"，此后不再被设置页的全局缩放覆盖。 */
+    public static void markScalePicked(JSONObject cfg) {
+        if (cfg == null) return;
+        try {
+            cfg.put(KEY_SCALE_PICKED, 1);
         } catch (Throwable th) {
             th.printStackTrace();
         }

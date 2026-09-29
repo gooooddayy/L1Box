@@ -1,6 +1,6 @@
 # L1Box
 
-基于 [BoxOSC](https://github.com/q215613905/TVBoxOSC) 的 **竖屏手机版** fork。
+基于开源播放器框架二次开发的 **竖屏手机版**。
 
 在保留原有影视聚合能力的基础上，针对**手机竖屏**使用场景做了大量体验与稳定性改造：
 竖屏布局与手势、播放器作用域与内核选择、搜索链路可靠性、订阅源解析容错、播放起播与缓冲控制等。
@@ -8,6 +8,12 @@
 - **包名**：`com.github.tvbox.osc`
 - **版本**：`1.1.1`（versionCode 31）
 - **编译**：`compileSdk 33` / `minSdk 24` / `targetSdk 28`
+
+## 下载
+
+安装包在 [Releases](../../releases) 页，直接下载最新 `.apk` 安装即可。
+
+> 本仓库为**私有**，仅供自用与存档，不接受 issue / PR。
 
 ## 为什么 targetSdk 停在 28
 
@@ -68,5 +74,4 @@ docs/                开发过程文档（方案、验证记录、踩坑）
 
 ## 致谢
 
-- [BoxOSC](https://github.com/q215613905/TVBoxOSC)
 - [dkplayer](https://github.com/Doikki/DKVideoPlayer)

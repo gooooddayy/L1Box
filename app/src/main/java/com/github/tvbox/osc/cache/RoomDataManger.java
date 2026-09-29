@@ -7,7 +7,6 @@ import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.bean.VodInfo;
 import com.github.tvbox.osc.data.AppDataManager;
 import com.google.gson.ExclusionStrategy;
-import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.PlayTrace;
 import com.google.gson.FieldAttributes;
@@ -15,7 +14,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
-import com.orhanobut.hawk.Hawk;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -86,15 +84,21 @@ public class RoomDataManger {
         }
     }
 
-    public static List<VodInfo> getAllVodRecord(int limit) {
+    /**
+     * 历史记录列表。条数上限与清理由 {@link HistoryHelper#HIS_NUM} 单点决定
+     * （原先查询上限与清理阈值各自写死，会互相矛盾）。
+     */
+    public static List<VodInfo> getAllVodRecord() {
         int count = AppDataManager.get().getVodRecordDao().getCount();
-        Integer index = Hawk.get(HawkConfig.HISTORY_NUM, 0);
-        Integer hisNum = HistoryHelper.getHisNum(index);
-        if ( count > hisNum ) {
+        int hisNum = HistoryHelper.HIS_NUM;
+        if (count > hisNum) {
             AppDataManager.get().getVodRecordDao().reserver(hisNum);
         }
-        List<VodRecord> recordList = AppDataManager.get().getVodRecordDao().getAll(limit);
+        List<VodRecord> recordList = AppDataManager.get().getVodRecordDao().getAll(hisNum);
         List<VodInfo> vodInfoList = new ArrayList<>();
+        // 站点池是否装载完毕：未装载完时 ApiConfig.getSource 必然取不到（池还是空的），
+        // 此时**不能**据此丢弃记录，否则冷启动刚进历史记录页会把所有记录静默丢光、页面一片空白。
+        boolean poolSettled = ApiConfig.get().isSitePoolSettled();
         if (recordList != null) {
             for (VodRecord record : recordList) {
                 VodInfo info = null;
@@ -104,7 +108,9 @@ public class RoomDataManger {
                         }.getType());
                         info.sourceKey = record.sourceKey;
                         SourceBean sourceBean = ApiConfig.get().getSource(info.sourceKey);
-                        if (sourceBean == null || info.name == null)
+                        // 池已定论后仍取不到源 = 这条线路/站点真的已经不在当前订阅里，按原逻辑剔除；
+                        // 池未定论则先照常显示（记录里的片名、封面本就来自快照，不依赖站点信息）。
+                        if (info.name == null || (sourceBean == null && poolSettled))
                             info = null;
                     }
                 } catch (Exception e) {

@@ -3,7 +3,7 @@
 # 用法：bash run_l1_subtest.sh
 set -e
 
-ROOT="/c/Users/Administrator/WorkBuddy/2026-08-19-14-43-05"
+ROOT="<本机>/WorkBuddy/2026-08-19-14-43-05"
 JDK="$ROOT/dl/jdk11/jdk-11.0.32+9"
 SRC="$ROOT/FreeBox-src/app/src/main/java/com/github/tvbox/osc/util"
 T="$ROOT/_l1_subtest"
