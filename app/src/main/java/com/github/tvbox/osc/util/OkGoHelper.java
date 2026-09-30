@@ -290,16 +290,19 @@ public class OkGoHelper {
         // 现在给图片一条完全独立的路：自己的 Dispatcher/连接池 + 收紧的超时（快速让位）。
         // 继承主 client 的部分（DNS=DoH 兜底、Brotli、SSL 宽松、connectionSpecs）都是需要的，保留。
         okhttp3.Dispatcher imgDispatcher = new okhttp3.Dispatcher();
-        imgDispatcher.setMaxRequests(DeviceProfile.imageMaxRequests());
-        imgDispatcher.setMaxRequestsPerHost(DeviceProfile.imageMaxRequestsPerHost());
+        // ck（2026-09-30）：撤销 cj 的设备档位收敛，恢复固定值（12 / 6）。
+        // 理由：中/高档本来取的就是这两个数，低档收敛收益未验证，却引入 markMemoryPressure
+        // 这条"任何机器触发内存压力就永久降档"的隐藏路径。
+        imgDispatcher.setMaxRequests(12);
+        imgDispatcher.setMaxRequestsPerHost(6);
         OkHttpClient imageClient = client.newBuilder()
                 .dispatcher(imgDispatcher)
-                .connectionPool(new okhttp3.ConnectionPool(DeviceProfile.imageConnectionPool(), 5, java.util.concurrent.TimeUnit.MINUTES))
+                .connectionPool(new okhttp3.ConnectionPool(8, 5, java.util.concurrent.TimeUnit.MINUTES))
                 .connectTimeout(IMAGE_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .readTimeout(IMAGE_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .writeTimeout(IMAGE_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .retryOnConnectionFailure(false)
-                .cache(new Cache(new File(App.getInstance().getCacheDir(), "img_cache"), DeviceProfile.imageCacheBytes()))
+                .cache(new Cache(new File(App.getInstance().getCacheDir(), "img_cache"), 64 * 1024 * 1024))
                 .build();
         MyOkhttpDownLoader downloader = new MyOkhttpDownLoader(imageClient);
         Picasso picasso = new Picasso.Builder(App.getInstance())
@@ -310,8 +313,8 @@ public class OkGoHelper {
                 // ⚠ 池参数是**上游原版**（git show f834e74 原文），不动它，只让图片走自己的池。
                 // P1：4 → 8。图片下载是纯 IO 等待，8 路吞吐约翻倍；配合"可见窗口跳过"
                 // （见 L1ImageDemand），真实同时下载数 ≈ min(8, 可见图数)，对单个图床的压力与浏览器相当。
-                // cj（2026-09-29）：并行度改按设备档位取（低档 4、中/高档仍为 8），中高档行为逐字不变。
-                .executor(L1Executors.fixed("l1box-img", DeviceProfile.imageThreads()))
+                // ck（2026-09-30）：撤销 cj 的档位收敛，并行度恢复固定 8。
+                .executor(L1Executors.fixed("l1box-img", 8))
                 .defaultBitmapConfig(Bitmap.Config.RGB_565)
                 .build();
         Picasso.setSingletonInstance(picasso);

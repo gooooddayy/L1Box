@@ -1497,6 +1497,9 @@ open class DslTabLayout(
                 velocityX: Float,
                 velocityY: Float
             ): Boolean {
+                // L1Box fork（cn）：无条件喂 detector 之后，无内容可滚时不得起 fling
+                // （原实现靠「needScroll=false 就不喂」间接避免；改为无条件喂后必须显式守卫）。
+                if (!needScroll) return true
                 if (isHorizontal()) {
                     val absX = abs(velocityX)
                     if (absX > _minFlingVelocity) {
@@ -1537,22 +1540,101 @@ open class DslTabLayout(
         })
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // L1Box fork（2026-09-30 · cn）：手势兜底 —— 修「手势被整段吞掉」
+    //
+    // 实测（cm 取证，左栏 56 次手势）：46 次比值 0.97~1.00 完美跟手，
+    // 20 次「手势内滚动=0 且抬起后惯性=0」—— 手指滑 350~684px，内容一格没动。
+    // 强相关：零响应手势里只有 25% 出现「开始拦截」，正常手势 94%。
+    //
+    // 根因：能否滚动**完全押在 GestureDetector 的返回值上**
+    //   intercept = super.onInterceptTouchEvent(ev) || _gestureDetector.onTouchEvent(ev)
+    // detector 是有内部状态机的（脱离 slop 后才调 onScroll）。状态一旦不对
+    // —— 最典型：某次 DOWN 因 needScroll=false 而**没被喂**，基准点缺失 ——
+    // onScroll 便永不触发 ⇒ intercept 恒 false ⇒ 事件被让给 chip ⇒ 滚动彻底不发生。
+    //
+    // 做法：detector 未处理时，用**原始 MOVE 位移**兜底接管并滚动。
+    // 只有 detector 返回 false 才走兜底 ⇒ 正常路径行为逐字不变（零回归风险）。
+    // ──────────────────────────────────────────────────────────────────────
+
+    /** 按下基准（横向取 x、竖向取 y） */
+    private var _l1DownP = 0f
+
+    /** 兜底用的上一帧坐标 */
+    private var _l1LastP = 0f
+
+    /** 是否已脱离 slop（脱离后才兜底滚动，避免误吃点击） */
+    private var _l1Armed = false
+
+    /** 兜底判定位移阈值（与系统触摸 slop 同值） */
+    private val _l1Slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+
+    /** L1Box fork（cn）：记按下基准（DOWN 时调用） */
+    private fun l1ArmFallback(ev: MotionEvent) {
+        _l1DownP = if (isHorizontal()) ev.x else ev.y
+        _l1LastP = _l1DownP
+        _l1Armed = false
+    }
+
+    /** L1Box fork（cn）：相对按下点是否已算「脱离 slop」 */
+    private fun l1MovedEnough(ev: MotionEvent): Boolean {
+        val cur = if (isHorizontal()) ev.x else ev.y
+        return abs(cur - _l1DownP) > _l1Slop
+    }
+
+    /**
+     * L1Box fork（cn）：兜底滚动。**只在 detector 未处理本帧时调用**。
+     * 不会与 detector 双倍滚动：detector 一旦滚过，其 onScrollChange 返回 true ⇒ handled=true ⇒ 不走此处。
+     * @return true 表示本帧已由兜底滚动
+     */
+    private fun l1FallbackScroll(ev: MotionEvent): Boolean {
+        if (!needScroll) return false
+        val cur = if (isHorizontal()) ev.x else ev.y
+        if (!_l1Armed) {
+            if (abs(cur - _l1DownP) <= _l1Slop) {
+                _l1LastP = cur
+                return false
+            }
+            _l1Armed = true
+        }
+        // 与 GestureDetector.onScroll 的 distance 同向：上一帧 - 当前帧
+        val d = (_l1LastP - cur).toInt()
+        _l1LastP = cur
+        if (d == 0) return false
+        parent.requestDisallowInterceptTouchEvent(true)
+        if (isHorizontal()) scrollBy(d, 0) else scrollBy(0, d)
+        return true
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        // L1Box fork（cn）：**无条件**喂 detector（原实现只在 needScroll 时喂）。
+        // 漏喂 DOWN 会让 detector 缺基准点 ⇒ onScroll 永不触发 ⇒ 手势被整段吞掉（cm 实测 20/56）。
+        // 无条件喂是安全的：needScroll=false 时 onScrollChange 自身会 return false，不会滚动；
+        // onFling 另加 needScroll 守卫（见 listener）。
+        // 顺带消除 `||` 短路隐患（原写法 super 返回 true 时 detector 不会被调用）。
+        val detectorHandled = if (isEnabled) _gestureDetector.onTouchEvent(ev) else false
         var intercept = false
         if (needScroll) {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
                 _overScroller.abortAnimation()
                 _scrollAnimator.cancel()
+                l1ArmFallback(ev)
             }
             if (isEnabled) {
-                intercept = super.onInterceptTouchEvent(ev) || _gestureDetector.onTouchEvent(ev)
+                intercept = super.onInterceptTouchEvent(ev) || detectorHandled
+                // L1Box fork（cn）：detector 未接管时，按**原始位移**兜底接管 ——
+                // 不再让「能否滚动」取决于 detector 的状态机。
+                if (!intercept && ev.actionMasked == MotionEvent.ACTION_MOVE && l1MovedEnough(ev)) {
+                    _l1Armed = true
+                    intercept = true
+                }
             }
         } else {
             if (isEnabled) {
                 intercept = super.onInterceptTouchEvent(ev)
             }
         }
-        return if (isEnabled) {
+        val ret = if (isEnabled) {
             if (itemEnableSelector) {
                 intercept
             } else {
@@ -1561,18 +1643,26 @@ open class DslTabLayout(
         } else {
             false
         }
+        return ret
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (isEnabled) {
             if (needScroll) {
-                _gestureDetector.onTouchEvent(event)
+                val handled = _gestureDetector.onTouchEvent(event)
+                // L1Box fork（cn）：detector 未处理本帧 ⇒ 兜底自滚（修「手势被整段吞掉」）。
+                // 只在 ACTION_MOVE 兜底：UP/CANCEL 帧 detector 本就不产生 onScroll，
+                // 若在此处兜底会把「抬起点与最后 MOVE 的差值」多滚一次，破坏正常路径。
+                if (!handled && event.actionMasked == MotionEvent.ACTION_MOVE) {
+                    l1FallbackScroll(event)
+                }
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL ||
                     event.actionMasked == MotionEvent.ACTION_UP
                 ) {
                     parent.requestDisallowInterceptTouchEvent(false)
                 } else if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                     _overScroller.abortAnimation()
+                    l1ArmFallback(event)
                 }
                 return true
             } else {
@@ -1663,7 +1753,11 @@ open class DslTabLayout(
                         startFling(-velocity.toInt(), 0, maxScrollX)
                     }
                 } else {
-                    startFling(-velocity.toInt(), 0, maxHeight)
+                    // L1Box fork（2026-09-30 · cl）：fling 上界由 maxHeight 改为 maxScrollY。
+                    // 原为"内容总高"，而真正可滚范围是 maxScrollY＝内容高−视高 —— 相差**一整个视高**。
+                    // 后果：fling 在视觉抵达底部后仍继续空转；空转期间若插入新 chip 使 maxScrollY 变大，
+                    // scrollTo 的钳制会把 scrollY 一路"吸"到新的底部（ck 实测：前Y=517 → 后Y=1511＝新上限）。
+                    startFling(-velocity.toInt(), 0, maxScrollY)
                 }
             }
         }
@@ -1774,7 +1868,17 @@ open class DslTabLayout(
         if (_overScroller.computeScrollOffset()) {
             scrollTo(_overScroller.currX, _overScroller.currY)
             invalidate()
-            if (_overScroller.currX < minScrollX || _overScroller.currX > maxScrollX) {
+            // L1Box fork（2026-09-30 · cl）：竖向必须判 currY。
+            // 原实现只查 currX，而竖向 fling 的 currX 恒为 0、minScrollX=0、maxScrollX≥0
+            // ⇒ 条件永不成立 ⇒ **竖向 fling 永不提前中止**，撞界后持续空转
+            // （ck 实测单段长达 4668ms / 8348ms，正常 fling 仅 1~2 秒）。
+            // 空转是"滚动位置被吸到新底部"的必要条件，必须一并掐掉。
+            val outOfRange = if (isHorizontal()) {
+                _overScroller.currX < minScrollX || _overScroller.currX > maxScrollX
+            } else {
+                _overScroller.currY < minScrollY || _overScroller.currY > maxScrollY
+            }
+            if (outOfRange) {
                 _overScroller.abortAnimation()
             }
         }

@@ -151,6 +151,12 @@
             android:paddingRight="10dp">
 
 
+            <!-- cl（2026-09-30）：关掉选中项居中。
+                 反编译 com.owen:tv-recyclerview 3.0.0 得知：mSelectedItemCentered 只在
+                 requestChildRectangleOnScreen（**焦点滚动**路径）里生效，触摸滑动不经过它；
+                 但触摸后 item 若获得焦点，仍可能触发一次"把选中项滚到居中"的额外滚动
+                 —— 正是"松手停下后又顿一下"的形状。本 fork 以触摸为主，D-pad 需求弱。
+                 mGridViewFilter 保持 true 作对照。 -->
             <com.owen.tvrecyclerview.widget.TvRecyclerView
                 android:id="@+id/mGridView"
                 android:layout_width="match_parent"
@@ -159,7 +165,7 @@
                 android:clipToPadding="false"
                 android:visibility="invisible"
                 app:tv_horizontalSpacingWithMargins="@dimen/dp_5"
-                app:tv_selectedItemIsCentered="true"
+                app:tv_selectedItemIsCentered="false"
                 app:tv_verticalSpacingWithMargins="@dimen/dp_5" />
 
             <com.owen.tvrecyclerview.widget.TvRecyclerView

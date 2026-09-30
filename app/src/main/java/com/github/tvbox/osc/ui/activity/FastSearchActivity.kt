@@ -118,11 +118,28 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         /**
          * 站点 chip 分帧创建：每帧最多建几个（cc 实测一次性建 40 个造成 364ms 卡顿）。
          *
-         * cj（2026-09-29）：改按设备档位现取（低档 4、中/高档 8）。低档机主线程更慢，
-         * 同样 8 个 chip 的单帧代价更高，减半换取更小的单帧负载。中/高档与改造前逐字一致。
+         * ck（2026-09-30）：撤销 cj 的档位收敛，恢复固定 8（cj 的低档 4 已移除）。
          */
-        private val SITE_TAB_BATCH: Int
-            get() = DeviceProfile.siteTabBatch()
+        private const val SITE_TAB_BATCH = 8
+
+        /**
+         * **临时诊断埋点开关**（ck 测试版专用，验证完整体撤除）。
+         *
+         * 为什么要有它：两轮排查共找出 5 条**都能解释"卡"**的机制 ——
+         * ㈠左栏守卫误判（fling 撞界后滚动回调冻结）㈡左栏 `needScroll` 门槛（chip 少时根本不接管手势）
+         * ㈢chip 创建成本（每 chip 重解析 drawable ＋ `existsSiteTab` O(n²)）㈣右栏停稳同帧三件重活
+         * ㈤搜索期每 120ms 一次越界取消。**证据强度相同，静态分析排不出主次。**
+         * 盲改的结果通常是"改三处、只中一处、另两处引入新风险" ⇒ 先量化，再动手。
+         *
+         * 纪律：每条埋点**事件驱动**（只在真插入 / 真停稳 / 真出最差帧时各打一条），
+         * 绝不逐帧打印（`println` 是同步写 logcat，逐帧打会自己制造卡顿而污染结论）。
+         * 打完一轮立刻撤 —— 沿用 ch 轮撤「分段耗时」的先例。
+         */
+        // cu 收尾（2026-09-30）：两侧跟手问题已解决（左：cn 手势兜底；右：ct 自研 fling），
+        // 排查期埋点**全部关闭** —— 本常量是 `const`、`l1Trace` 是 `inline`，
+        // 置 false 后 Kotlin 会在**编译期彻底消除**所有观测代码 ⇒ 零运行时开销、不再写任何日志。
+        // 若日后需再排查：置回 true 即可（断言与埋点代码都还在）。
+        private const val L1_TRACE = false
 
         // ── 左栏断触（2026-09-28 用户报）───────────────────────────────
         // 症状：搜索页左栏拖着拖着突然不跟手（用户猜"起始滑动点落在无效的地方"）。
@@ -265,17 +282,82 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         // 左栏断触（2026-09-28）：记录左栏最后一次滚动时刻 —— 站点 tab 的增删一律等"停手"才做
         // （见 scheduleSiteTabs）。DslTabLayout 滚动走 scrollTo，View 的滚动回调能收到。
         mBinding.tabLayout.setOnScrollChangeListener { _, _, _, _, _ ->
-            siteTabsLastScrollMs = SystemClock.elapsedRealtime()
+            val now = SystemClock.elapsedRealtime()
+            // ck 埋点：连续滚动归成一段（起点 + 事件数）
+            if (!traceTabRunActive) {
+                traceTabRunActive = true
+                traceTabRunStartMs = now
+                traceTabRunEvents = 0
+            }
+            traceTabRunEvents++
+            siteTabsLastScrollMs = now
         }
         mBinding.mGridView.setHasFixedSize(true)
         // P1（2026-09-28）：**关掉 item 插入动画**。结果每拍持续插入 12 条、持续十几秒，
         // 默认 DefaultItemAnimator 会让手指下的 item 一路位移/淡入 —— 视觉上就是"不跟手"。
         mBinding.mGridView.itemAnimator = null
         // F3（2026-09-28）：缓存加厚（默认 2）—— 滑动来回时减少重绑定
-        // cj（2026-09-29）：条数改按设备档位取（低档 3、中/高档仍为 6），中高档行为逐字不变。
-        mBinding.mGridView.setItemViewCacheSize(DeviceProfile.itemViewCacheSize())
+        // ck（2026-09-30）：撤销 cj 的档位收敛，恢复固定 6。
+        mBinding.mGridView.setItemViewCacheSize(6)
         mBinding.mGridView.setLayoutManager(LinearLayoutManager(this))
         mBinding.mGridView.adapter = searchAdapter
+        // ── co 取证（2026-09-30）：右栏 fling 请求速度 —— **只观测** ──────────────
+        // 依据：cn 实测「接触时间短地快速滑」时，惯性阶段只有 16~28ms（1~2 帧），
+        // 而末帧仍有 100~200px/帧 ⇒ **不是自然减速**。本埋点给出「系统实际请求的 fling 速度」，
+        // 与同帧 `[tp] ★右栏UP 手速=` 对照即可分辨：
+        //   甲 系统 vy 远小于手速 ⇒ **速度没被采纳** → 修法：抬速兜底
+        //   乙 系统 vy 正常但滑不远 ⇒ **fling 被中止** → 修法：查中止者
+        // 返回 **false** ⇒ 交回 RecyclerView 默认处理，行为逐字不变。
+        // 安全性：TvRecyclerView 内部 **0 处** setOnFlingListener（javap 核实：该类既未重写
+        // fling、也无任何 fling/velocity 相关调用）⇒ 挂载不会覆盖库内逻辑。
+        mBinding.mGridView.setOnFlingListener(object : RecyclerView.OnFlingListener() {
+            override fun onFling(velocityX: Int, velocityY: Int): Boolean {
+                if (L1_TRACE) {
+                    val gap = if (l1RvUpMs > 0) SystemClock.elapsedRealtime() - l1RvUpMs else -1L
+                    // ── cq 取证（2026-09-30）：**用同一速度跑一个独立的 OverScroller 复算理论距离** ──
+                    // 要一次分清两种互斥的可能：
+                    //   ① 独立 scroller 也算出「很短」 ⇒ **scroller 本身就算出短距离**
+                    //      （⇒ 指向系统级因素，如 animator_duration_scale / 密度）
+                    //   ② 独立 scroller 算出「很长」而实测只有几百 px ⇒ **fling 被替换或中止**
+                    // 依据：cp 实测惯性帧=2（13ms）、末帧 161px/帧（≈23000px/s）却直接静止，
+                    // 说明 `OverScroller` 自己认为「跑完了」。必须知道它到底算出了多远。
+                    // 只观测：独立对象，不参与任何 View 的滚动，返回 false 交回默认处理。
+                    // ── ⚠️ cr 修正（2026-09-30）：必须先 abortAnimation() ──
+                    // cq 轮实测踩到：`OverScroller` 有**飞轮（flywheel）**机制 ——
+                    // `fling()` 开头若 `mFlywheel && !isFinished()`，会把**上一次的残余速度加上去**。
+                    // 复用同一个探针实例 ⇒ 速度逐次累加 ⇒ 理论距离单调爆炸
+                    // （实测从 13,706 一路涨到 2,546,629，与 vy 完全脱钩）⇒ 数据无效。
+                    // 先 abortAnimation() 把 mFinished 置 true，飞轮条件即不成立。
+                    val probe = l1ProbeScroller
+                    probe.abortAnimation()
+                    probe.fling(0, 0, velocityX, velocityY,
+                            Int.MIN_VALUE, Int.MAX_VALUE, Int.MIN_VALUE, Int.MAX_VALUE)
+                    val theoryY = probe.finalY
+                    val scale = try {
+                        android.provider.Settings.Global.getFloat(
+                            contentResolver,
+                            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+                        )
+                    } catch (e: Throwable) {
+                        -1f
+                    }
+                    l1Trace {
+                        "[tp] ★右栏fling请求 vx=$velocityX vy=$velocityY" +
+                                " 理论距离=$theoryY ｜动画缩放=$scale 密度=${resources.displayMetrics.density}" +
+                                " 手速=${l1RvHandVy.toInt()} 手指位移=${l1RvHandDy.toInt()}" +
+                                " 接触=${l1RvHandDur}ms 距UP=${gap}ms"
+                    }
+                }
+                // ── ct：自研 fling（依据 cs 实测的「恒定帧序列」＝ smoothScrollBy 特征）──
+                // 返回 **true 劫持**：不让系统再起 fling —— 它会被 smoothScrollBy 覆盖成
+                // 「匀速 + 短距离」的滚动（这正是用户说的"很快就停"）。
+                if (l1OwnFling && velocityY != 0) {
+                    startOwnFling(velocityY)
+                    return true
+                }
+                return false // 回退路径（L1_OWN_FLING=false 时）：交回默认处理
+            }
+        })
         // 2026-09-28：**不再给 adapter 设"可见门闸"**（上一版按 position 判可见性，导致
         // "点左侧特定站点时整页图不加载"的误判）。请求一律照发，越界的在途请求由
         // L1ImageInflight.cancelOutside() 在停稳/切站点时取消。
@@ -284,6 +366,19 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         // 已按实测撤掉（原因见 SCROLL_BATCH_MAX 处的注释）。
         mBinding.mGridView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                // L1Box 取证（cm）：右栏完整的滚动状态迁移时间线（拖动 → 惯性 → 静止）
+                if (L1_TRACE) {
+                    val name = when (newState) {
+                        RecyclerView.SCROLL_STATE_IDLE -> "静止"
+                        RecyclerView.SCROLL_STATE_DRAGGING -> "拖动"
+                        RecyclerView.SCROLL_STATE_SETTLING -> "惯性"
+                        else -> "?"
+                    }
+                    l1Trace {
+                        "[tp] 右栏状态→$name 待落=${pendingResults.size}" +
+                                " offset=${rv.computeVerticalScrollOffset()}/${rv.computeVerticalScrollRange()}"
+                    }
+                }
                 scrollPauseActive = newState != RecyclerView.SCROLL_STATE_IDLE
                 if (scrollPauseActive) {
                     // 滑动中：节流刷新"取消越界在途下载"的判断（不动任何视图、不发任何预判）
@@ -291,15 +386,30 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
                 } else {
                     // 停稳：①把攒着的落完 ②取消已滚出可见范围的图片下载（让并发槽让给可见的图）
                     // 注意：这里**不再**对可见区间强制重绑（那是上一版为门闸兜底加的补丁，已随门闸撤除）
+                    // ck 埋点：这三件活挤在"惯性刚停止"的同一帧，是右栏顿挫的头号嫌疑 ⇒ 逐项计时。
+                    val t0 = SystemClock.elapsedRealtime()
                     if (pendingResults.isNotEmpty() && !flushScheduled) scheduleFlush()
                     cancelOutOfWindowImages()
+                    val t1 = SystemClock.elapsedRealtime()
                     scheduleVisibleImageAudit()
+                    val t2 = SystemClock.elapsedRealtime()
                     // 停稳后顺手把"马上要看到的那一圈"图预热（用户口径：可见±6 预取）
                     prefetchAroundVisible()
+                    val t3 = SystemClock.elapsedRealtime()
+                    l1Trace {
+                        "[l1] 停稳收尾：取消=${t1 - t0}ms 审计投递=${t2 - t1}ms 预取=${t3 - t2}ms" +
+                                " 合计=${t3 - t0}ms 待落=${pendingResults.size}" +
+                                " 累计取消调用=$traceCancelCalls"
+                    }
+                    // L1Box 取证（cm）：结算这一趟滑行的位移分布
+                    traceFlushRightScroll("停稳")
                 }
             }
 
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                // L1Box 取证（cm）：累积逐帧位移 —— 用来判断"惯性滑行是否均匀"。
+                // 动机：帧耗时正常（5~7ms）却"体感顿挫" ⇒ 问题不在渲染，而在**位移连续性**。
+                if (L1_TRACE) traceAccumDy(dy, rv.scrollState)
                 // 2026-09-28：**滑动中不取消任何下载** —— 滑动中"可见范围"每秒都在变，
                 // 取消会误伤"fling 结束后正好停在屏幕里"的那些图（cc 实测：取消数≈失败里的
                 // SocketException 数，且被取消的图若来自复用缓存就不再重绑，会永久停在灰图）。
@@ -1225,6 +1335,7 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
      * 拿不到可见范围时**一个都不取消**（保守：宁可慢一点也不误伤）。
      */
     private fun cancelOutOfWindowImages() {
+        traceCancelCalls++ // ck 埋点：累计调用次数
         val r = visibleRange() ?: return
         val data = activeData()
         if (data.isEmpty()) return
@@ -1342,6 +1453,8 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     private var frameWorstMs = 0L
     private var frameWorstAtWall = 0L
     private var frameWorstStage = "-"
+    /** ck 埋点：最差帧发生时"两侧各在什么状态"（证明用户当时是否正在滑） */
+    private var frameWorstState = "-"
     private var frameJankCount = 0
     /** 当前阶段（由关键路径更新），用于给"最差帧"归因 */
     @Volatile
@@ -1353,6 +1466,109 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     private val prefetchedUrls = HashSet<String>()
     /** 可见±6 预取：本轮剩余额度（用完即停，见 IMG_PREFETCH_BUDGET） */
     private var prefetchBudget = IMG_PREFETCH_BUDGET
+    /** ck 埋点：越界取消被调用的累计次数（验证"搜索期每 120ms 一次"这条根因） */
+    private var traceCancelCalls = 0
+
+    // ── co 取证（2026-09-30）：右栏手势速度 ──────────────────────────────────
+    // 要回答的问题：cn 实测「接触时间短地快速滑」时，惯性阶段只有 16~28ms（1~2 帧），
+    // 而末帧仍有 100~200px/帧 —— **不是自然减速，是速度没被采纳或 fling 被立刻中止**。
+    // 只观测：自己持一份 VelocityTracker，不消费、不修改、不返回 true。
+    private var l1RvTracker: android.view.VelocityTracker? = null
+    /** 右栏手势按下时的基准（时刻与 rawY） */
+    private var l1RvDownMs = 0L
+    private var l1RvDownY = 0f
+    /** UP 时算出的手指真实速度与位移/接触时长 */
+    private var l1RvHandVy = 0f
+    private var l1RvHandDy = 0f
+    private var l1RvHandDur = 0L
+    /** 最近一次右栏 UP 的时刻（供 onFling 与滑行结算计算「距UP」） */
+    private var l1RvUpMs = 0L
+
+    /**
+     * cq 取证（2026-09-30）：**独立的** `OverScroller`，用与系统相同的参数复算「理论滑行距离」。
+     * 只观测：它不参与任何 View 的滚动，仅调用 `fling()` 后读 `finalY`。
+     * `by lazy` 避免每次手势重复构造（构造要读 ViewConfiguration）。
+     */
+    private val l1ProbeScroller by lazy { android.widget.OverScroller(this) }
+
+    // ── ct（2026-09-30）：自己驱动惯性滑动，绕开系统的 smoothScrollBy ─────────────
+    // 依据（cs 实测铁证）：惯性阶段逐帧位移**完全恒定、零衰减** —— 例
+    //   [42,188,167,167,167,188,166,166,185,165,164,183]（第 2 帧起 164~188，±7%）
+    //   [172,195,196,219,195,195,219,194,193,193,216,192]（192~219）
+    //   12 帧内没有任何递减趋势 ⇒ 这只能是 `smoothScrollBy`（**线性插值器**）的形态；
+    //   真正的 `fling`（`SplineOverScroller`）必然呈指数/样条衰减。
+    // 结论：系统的 fling 被 `TvRecyclerView.requestChildRectangleOnScreen → smoothScrollBy`
+    //   覆盖掉了（该方法内 `invokevirtual smoothScrollBy` 已由 javap 定位）。
+    // 做法：在 `onFling` 里返回 true **自己驱动滚动** —— 用**真实时钟**做指数衰减：
+    //   ① 绕开那个 smoothScrollBy（系统 fling 不再启动）
+    //   ② 不受 `animator_duration_scale` 影响（实测 0.5x 也会让惯性短约 20%）
+    // 回退：把 L1_OWN_FLING 改成 false 即回到系统行为，其余代码不参与。
+    private val l1OwnFling = true                      // ← 回退开关
+    private val l1FlingTauMs = 420.0                   // 衰减时间常数：总距离 ≈ v0 × TAU
+    private val l1FlingMinV = 60.0                     // 速度低于此值即停止(px/s)
+
+    private var l1FlingOn = false
+    private var l1FlingV0 = 0.0
+    private var l1FlingStartMs = 0L
+    private var l1FlingLastMs = 0L
+    private var l1FlingLastOff = 0
+    private var l1FlingFrames = 0
+    private var l1FlingTotal = 0
+
+    private val l1FlingTick = object : Runnable {
+        override fun run() {
+            if (!l1FlingOn) return
+            val rv = mBinding.mGridView
+            val now = SystemClock.uptimeMillis()
+            // dt 夹在 [1,50] ms：防止掉帧/被抢占时一帧跳太远
+            val dt = (now - l1FlingLastMs).coerceIn(1L, 50L)
+            l1FlingLastMs = now
+            val v = l1FlingV0 * Math.exp(-(now - l1FlingStartMs).toDouble() / l1FlingTauMs)
+            if (Math.abs(v) < l1FlingMinV) {
+                endOwnFling("速度已低于阈值")
+                return
+            }
+            val dy = (v * dt / 1000.0).toInt()
+            if (dy != 0) {
+                rv.scrollBy(0, dy)
+                l1FlingFrames++
+                l1FlingTotal += (if (dy < 0) -dy else dy)
+            }
+            // 撞到顶/底：offset 不再变化 ⇒ 立即停止（RecyclerView 会钳制，不会越界）
+            val off = rv.computeVerticalScrollOffset()
+            if (off == l1FlingLastOff) {
+                endOwnFling("已到边界")
+                return
+            }
+            l1FlingLastOff = off
+            rv.postOnAnimation(this)
+        }
+    }
+
+    private fun startOwnFling(vy: Int) {
+        if (!l1OwnFling || vy == 0) return
+        val rv = mBinding.mGridView
+        l1FlingV0 = vy.toDouble()
+        l1FlingStartMs = SystemClock.uptimeMillis()
+        l1FlingLastMs = l1FlingStartMs
+        l1FlingLastOff = rv.computeVerticalScrollOffset()
+        l1FlingFrames = 0
+        l1FlingTotal = 0
+        l1FlingOn = true
+        rv.postOnAnimation(l1FlingTick)
+    }
+
+    private fun endOwnFling(why: String) {
+        if (!l1FlingOn) return
+        l1FlingOn = false
+        mBinding.mGridView.removeCallbacks(l1FlingTick)
+        l1Trace {
+            "[tp] ★右栏自研fling[结束]：原因=$why 帧=$l1FlingFrames 位移=$l1FlingTotal" +
+                    " 初速=${l1FlingV0.toInt()} 时长=${SystemClock.uptimeMillis() - l1FlingStartMs}ms" +
+                    " ｜（对照 cs 的 smoothScrollBy 恒定序列）"
+        }
+    }
+
 
     /**
      * 标记"当前正在做什么"，供最差帧归因。
@@ -1367,6 +1583,20 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         frameStage = name
     }
 
+    /** ck 临时埋点输出。lambda 形式 ⇒ 关掉时连字符串都不构造，零开销。 */
+    private inline fun l1Trace(msg: () -> String) {
+        if (L1_TRACE) System.out.println(msg())
+    }
+
+    /** ck 埋点：把"此刻两侧各在什么状态"拼成一行，用于给最差帧归因。 */
+    private fun traceState(): String {
+        val tab = mBinding.tabLayout
+        return "右栏=${if (scrollPauseActive) "滑动中" else "静止"}" +
+                " 左栏Y=${tab.scrollY}/${tab.maxScrollY}" +
+                " 左栏可滚=${tab.needScroll}" +
+                " 待建=${siteTabsQueue.size + siteTabsPending.size}"
+    }
+
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!frameWatching) return
@@ -1378,6 +1608,9 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
                     frameWorstMs = gap
                     frameWorstAtWall = System.currentTimeMillis()
                     frameWorstStage = frameStage
+                    // ck 埋点：把"最差帧发生时两侧在不在动"一起记下 ——
+                    // 只靠阶段标签回答不了"用户当时是否正在滑"，而那正是本次要判的事。
+                    frameWorstState = traceState()
                 }
                 if (gap > FRAME_JANK_MS) frameJankCount++
             }
@@ -1400,18 +1633,26 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         val at = if (frameWorstAtWall > 0)
             java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(frameWorstAtWall))
         else "-"
-        val s = "帧耗时[$round]：帧数=$frameCount 平均=${avg}ms 最差=${frameWorstMs}ms@$at($frameWorstStage)"
+        val s = "帧耗时[$round]：帧数=$frameCount 平均=${avg}ms 最差=${frameWorstMs}ms@$at($frameWorstStage)" +
+                (if (L1_TRACE && frameWorstState != "-") " ｜最差帧当时[$frameWorstState]" else "")
         frameCount = 0
         frameSumMs = 0L
         frameWorstMs = 0L
         frameWorstAtWall = 0L
         frameWorstStage = "-"
+        frameWorstState = "-"
         frameJankCount = 0
         return s
     }
 
     // ── 左栏（站点栏）视图改动队列：拖动中一律不动视图 ──────────────────
     private var siteTabsLastScrollMs = 0L
+    // ck 埋点：把"连续滚动"归成一段（起点 + 事件数）。
+    // 用途 —— 区分「手还在拖」与「手已松开、惯性仍在跑」：前者守卫靠 touchDown 就够，
+    // 后者只能靠滚动回调计时，而回调在撞界后会冻结 ⇒ 正是要量出来的那个窗口。
+    private var traceTabRunActive = false
+    private var traceTabRunStartMs = 0L
+    private var traceTabRunEvents = 0
     private var siteTabsNeedReset = false
     private val siteTabsPending = ArrayList<String>()
     private var siteTabsFlushPosted = false
@@ -1431,8 +1672,37 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
      * 所以在 Activity 这一层旁观触摸流：只有**左栏上没有手指**、且 400ms 内没滚动过，才允许改视图。
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // L1Box 取证（cm）：记录触摸事件流。
+        // **ACTION_CANCEL 就是"断触"的直接证据** —— 现有埋点全在测"插入了什么"，
+        // 从没看过手势本身，这一条正是要补上这个盲区。
+        // 只观测、不改行为：位置在原有记账逻辑之前，且不消耗/不修改事件。
+        if (L1_TRACE) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val r = Rect()
+                    val inLeft = mBinding.tabLayout.getGlobalVisibleRect(r) &&
+                            r.contains(ev.x.toInt(), ev.y.toInt())
+                    val tag = when (ev.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> "DOWN  "
+                        MotionEvent.ACTION_UP -> "UP    "
+                        else -> "★CANCEL"
+                    }
+                    l1Trace {
+                        "[tp] $tag 落左栏=$inLeft x=${ev.x.toInt()} y=${ev.y.toInt()}" +
+                                " 左栏Y=${mBinding.tabLayout.scrollY}/${mBinding.tabLayout.maxScrollY}" +
+                                " 可滚=${mBinding.tabLayout.needScroll}" +
+                                " chip=${mBinding.tabLayout.childCount}"
+                    }
+                    traceCheckNeedScrollFlip("触摸事件")
+                }
+            }
+            // co 取证：右栏手势速度（只观测，绝不干预事件分发）
+            traceRightGestureVelocity(ev)
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // ct：用户按下就立即停掉自研惯性 —— 否则它会与手指拖动叠加（滑得更远、更怪）。
+                endOwnFling("用户按下")
                 val r = Rect()
                 if (mBinding.tabLayout.getGlobalVisibleRect(r)
                         && r.contains(ev.x.toInt(), ev.y.toInt())) {
@@ -1451,6 +1721,166 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    // ── L1Box 取证（cm）：`needScroll` 翻转检测 ──────────────────────────────
+    // 为什么盯它：翻转前后 DslTabLayout 处理手势的路径**整体切换**
+    // （`onTouchEvent` 走 `super.onTouchEvent` ↔ 走 `_gestureDetector`），
+    // 且接管瞬间 ViewGroup 会给子 View 发 ACTION_CANCEL。
+    // 用户已确认断触发生在**同一轮搜索内** ⇒ 排除了"清空重建"，它就是头号嫌疑。
+    private var traceLastNeedScroll = false
+    private var traceNeedScrollInit = false
+
+    private fun traceCheckNeedScrollFlip(where: String) {
+        val now = mBinding.tabLayout.needScroll
+        if (!traceNeedScrollInit) {
+            traceNeedScrollInit = true
+            traceLastNeedScroll = now
+            return
+        }
+        if (now == traceLastNeedScroll) return
+        traceLastNeedScroll = now
+        l1Trace {
+            "[tp] ★★可滚翻转→$now（触发点：$where）" +
+                    " chip=${mBinding.tabLayout.childCount}" +
+                    " 左栏Y=${mBinding.tabLayout.scrollY}/${mBinding.tabLayout.maxScrollY}" +
+                    " 手指在左栏=${siteTabsTouchDown}"
+        }
+    }
+
+    // ── L1Box 取证（cm）：右栏逐帧位移采样 ────────────────────────────────
+    // 目的：帧耗时正常（5~7ms）却"体感顿挫" ⇒ 问题不在渲染，而在**位移是否连续**。
+    // 纪律：只累积、不逐帧打印（逐帧 println 是同步写 logcat，会自己制造卡顿而污染结论），
+    //       到"停稳"时结算成一行统计。
+    private val traceDyList = ArrayList<Int>()
+
+    // ── cp 取证（2026-09-30）：把「拖动帧」与「惯性帧」**分开**累积 ────────────────
+    // 为什么必须分开：co 实测已确证 ① 速度 100% 被采纳（vy 逐条等于手速）② 每次都发起了 fling
+    // ③ **但 vy 与惯性时长完全无相关**（vy=23392→4ms，vy=17010→1074ms）⇒ 是「发起后被极早中止」。
+    // 而 `traceDyList` 从上次 IDLE 起就累积、把拖动帧与惯性帧混在一起 ⇒
+    // 出现「距UP=18ms 却有 7 帧」这种自相矛盾，无法判断惯性阶段到底有没有产生滚动。
+    // 分开后即可一刀切开：惯性帧=0 ⇒ 被立即中止（0 帧）；惯性帧>0 但末帧不收敛 ⇒ 中途被中止。
+    private val traceSettleDy = ArrayList<Int>()
+
+    private fun traceAccumDy(dy: Int, scrollState: Int) {
+        // ⚠️ cp：上限从 400 提到 3000 —— co 实测已有 348 帧的滑行，400 上限逼近截断会低估总位移。
+        if (traceDyList.size < 3000) traceDyList.add(dy)
+        // 只把 **SETTLING（惯性）阶段**的帧单独记账 ⇒ 可一刀切开「拖动」与「惯性」
+        if (scrollState == RecyclerView.SCROLL_STATE_SETTLING && traceSettleDy.size < 3000) {
+            traceSettleDy.add(dy)
+        }
+    }
+
+    private fun traceFlushRightScroll(why: String) {
+        if (traceDyList.isEmpty()) return
+        val n = traceDyList.size
+        var total = 0
+        var maxAbs = 0
+        for (d in traceDyList) {
+            val a = if (d < 0) -d else d
+            total += a
+            if (a > maxAbs) maxAbs = a
+        }
+        // "突变"＝相邻两帧位移差 > 40px。平滑减速时不该出现；出现即说明滑行被打断/跳变。
+        var jumps = 0
+        for (i in 1 until n) {
+            val d = traceDyList[i] - traceDyList[i - 1]
+            if ((if (d < 0) -d else d) > 40) jumps++
+        }
+        // 尾部 6 帧：正常减速应"前大后小"并收敛到 0
+        val tail = traceDyList.takeLast(6).joinToString(",")
+        // co 取证：**距UP** ＝ 从手指抬起到本次停稳的时长 ⇒ 直接量化"惯性有多短"。
+        // 正常 fling 为 1~2 秒；实测"短接触快滑"只有 16~50ms 而末帧仍有 100+px/帧，
+        // 这是与"自然减速"区分开的决定性数字。
+        val sinceUp = if (l1RvUpMs > 0) SystemClock.elapsedRealtime() - l1RvUpMs else -1L
+        l1Trace {
+            "[tp] 右栏滑行[$why]：帧=$n 总位移=$total 最大单帧=$maxAbs" +
+                    " 平均=${if (n > 0) total / n else 0} 突变=$jumps 距UP=${sinceUp}ms 尾6帧=[$tail]"
+        }
+        // cp 取证：**分开报「惯性阶段」** —— 回答「fling 被立即中止(0帧) 还是中途被中止」。
+        // 判据：惯性帧=0 ⇒ 被立即中止；惯性帧>0 但末帧仍大 ⇒ 中途被中止。
+        val sn = traceSettleDy.size
+        if (sn > 0) {
+            var sTot = 0
+            for (d in traceSettleDy) sTot += (if (d < 0) -d else d)
+            val sTail = traceSettleDy.takeLast(5).joinToString(",")
+            // cs 取证（2026-09-30）：**惯性帧序列的前 12 帧** —— 用来分辨「匀速」还是「衰减」。
+            // 判据（cq 数据已强烈暗示）：
+            //   前 12 帧**基本恒定**（±10%）⇒ 匀速滚动 ⇒ 走的是 `smoothScrollBy`（线性插值器），不是 fling
+            //   前 12 帧**单调递减**        ⇒ 正常的 `SplineOverScroller` 衰减
+            // 依据：cq 实测「平均速度 / 初速」达 60%~117%（自然衰减应远低于 100%），
+            //      且短惯性样本普遍「末帧≈首帧」（例：169→161）。只在 IDLE 时一次性打印，不逐帧刷。
+            val sHead = traceSettleDy.take(12).joinToString(",")
+            l1Trace {
+                "[tp] ★右栏惯性[停稳]：惯性帧=$sn 惯性位移=$sTot" +
+                        " 首帧=${traceSettleDy.first()} 末帧=${traceSettleDy.last()}" +
+                        " ｜拖动帧=${n - sn} 总帧=$n 距UP=${sinceUp}ms 惯性尾5帧=[$sTail]" +
+                        " 惯性前12帧=[$sHead]"
+            }
+        } else {
+            l1Trace {
+                "[tp] ★右栏惯性[停稳]：惯性帧=0（**fling 一帧都没跑**）" +
+                        " ｜拖动帧=$n 总帧=$n 距UP=${sinceUp}ms"
+            }
+        }
+        traceDyList.clear()
+        traceSettleDy.clear()
+    }
+
+    /**
+     * co 取证（2026-09-30）：右栏手势的真实速度 —— **只观测**。
+     *
+     * 为什么需要：cn 实测「接触时间短地快速滑」时惯性阶段只有 16~28ms（1~2 帧），
+     * 而末帧仍有 100~200px/帧 ⇒ 不是自然减速。两种可能：
+     *   甲 **速度没被采纳** —— RecyclerView 算出的 velocity 远小于手指真实速度
+     *   乙 **fling 启动后立刻被中止**
+     * 本方法与 `★右栏fling请求` 同帧成对出现，两个速度一对照即可分辨甲乙。
+     *
+     * 安全性：自持一份 VelocityTracker，与 View 自身的事件分发完全独立
+     * （不消费事件、不返回 true、不改事件），坐标用 `rawX/rawY` 与
+     * `getGlobalVisibleRect` 同属屏幕坐标系（避免与 `ev.x/y` 混比）。
+     */
+    private fun traceRightGestureVelocity(ev: MotionEvent) {
+        val r = Rect()
+        val onRight = mBinding.mGridView.getGlobalVisibleRect(r) &&
+                r.contains(ev.rawX.toInt(), ev.rawY.toInt())
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                l1RvTracker?.recycle()
+                l1RvTracker = null
+                if (!onRight) return
+                l1RvTracker = android.view.VelocityTracker.obtain()
+                l1RvTracker?.addMovement(ev)
+                l1RvDownMs = SystemClock.elapsedRealtime()
+                l1RvDownY = ev.rawY
+            }
+            MotionEvent.ACTION_MOVE -> l1RvTracker?.addMovement(ev)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val t = l1RvTracker ?: return
+                t.addMovement(ev)
+                t.computeCurrentVelocity(1000)
+                l1RvHandVy = t.getYVelocity()
+                val finalHandX = t.getXVelocity()      // ⚠️ 必须在 recycle() 之前取
+                l1RvHandDy = ev.rawY - l1RvDownY
+                l1RvHandDur = SystemClock.elapsedRealtime() - l1RvDownMs
+                l1RvUpMs = SystemClock.elapsedRealtime()
+                t.recycle()
+                l1RvTracker = null
+                // ⚠️ 本段必须在 super.dispatchTouchEvent 之前取状态 —— 这是 **fling 发起前**的边界状态。
+                // 为什么关键：cn 实测同一接触时长/同一手指位移下，惯性时长从 4ms 到 2012ms 差 500 倍
+                // ⇒ 不是"速度被系统性算小"，更像"某些条件下根本没发起 fling"。
+                // RecyclerView 发起 fling 的条件为 `|xvel| < |yvel| && canScrollVertically(xvel, yvel)`
+                // ⇒ 任一不成立都不会 fling，因此必须把「当前速度分量」与「能不能继续滚」一并记下。
+                val rv = mBinding.mGridView
+                l1Trace {
+                    "[tp] ★右栏UP 手速=${l1RvHandVy.toInt()}(${if (l1RvHandVy > 0) "下滑" else "上滑"})" +
+                            " 手横速=${finalHandX.toInt()} 手指位移=${l1RvHandDy.toInt()}" +
+                            " 接触=${l1RvHandDur}ms" +
+                            " ｜可下滚=${rv.canScrollVertically(1)} 可上滚=${rv.canScrollVertically(-1)}" +
+                            " offset=${rv.computeVerticalScrollOffset()}/${rv.computeVerticalScrollRange()}"
+                }
+            }
+        }
     }
 
     /** 左栏是否"正在被摸"或在停手窗口内（真则不许改视图，只排队） */
@@ -1502,12 +1932,16 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     private fun flushSiteTabsNow() {
         siteTabsFlushPosted = false
         if (isFinishing || isDestroyed) return
-        if (siteTabsBusy()) {
-            scheduleSiteTabs() // 用户又动了，继续顺延
-            return
-        }
-        stage("建站点栏")
+        // cl（2026-09-30）：守卫**只保留给"清空重建"**。
+        // `removeAllViews()` 会让手指下的子 View 集体消失 ⇒ 确实会打断手势，必须等停手。
+        // 而"追加"只是 addView 到末尾，不移除也不移动已有子 View ⇒ 滑动中执行是安全的
+        //（ck 实测：三轮里唯一一次滚动位置跳变 517→1511 由 **fling 空转**造成，与 addView 无关）。
         if (siteTabsNeedReset) {
+            if (siteTabsBusy()) {
+                scheduleSiteTabs() // 用户还在动，清空重建继续顺延
+                return
+            }
+            stage("建站点栏")
             siteTabsNeedReset = false
             mBinding.tabLayout.removeAllViews()
             mBinding.tabLayout.addView(getSiteTextView("全部显示"))
@@ -1519,6 +1953,7 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             return
         }
         if (siteTabsPending.isNotEmpty()) {
+            stage("建站点栏")
             siteTabsQueue.addAll(siteTabsPending)
             siteTabsPending.clear()
             drainSiteTabQueue("追加")
@@ -1535,16 +1970,40 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
      */
     private fun drainSiteTabQueue(tagName: String) {
         if (siteTabsQueue.isEmpty()) return
-        if (siteTabsBusy()) {
-            scheduleSiteTabs()
-            return
-        }
+        // cl（2026-09-30）：**去掉了 siteTabsBusy() 检查**。
+        // 本函数只做 `addView` 追加 —— 追加不移除、也不移动已有子 View，滑动中执行是安全的；
+        // 真正会打断手势的 `removeAllViews()` 已在 flushSiteTabsNow 里单独守住。
+        // 原实现"滑动中一律不建"的代价：ck 实测用户滑 8.4 秒期间 chip **零更新**，
+        // 站点全堆在队列、停手后才一次性冒出（批量=8）—— 用户观感就是「一滑动就停止出结果」。
+        // ck 埋点（**本轮靶心**）：插入前取一次快照。这条要回答两件事 ——
+        //  ① 插入发生时列表**真的静止**吗？（距末滚动很小 ⇒ 守卫判对；很大 ⇒ 判错，插入落在惯性里）
+        //  ② 插入有没有**改掉滚动位置**？（前Y ≠ 后Y ⇒ 就是用户看到的"卡住 / 被拽回"）
+        val traceGapMs = SystemClock.elapsedRealtime() - siteTabsLastScrollMs
+        val traceBeforeY = mBinding.tabLayout.scrollY
+        val traceRunMs = if (traceTabRunActive)
+            SystemClock.elapsedRealtime() - traceTabRunStartMs else 0L
+        val traceRunEvents = traceTabRunEvents
+        traceTabRunActive = false
+
         var built = 0
         while (siteTabsQueue.isNotEmpty() && built < SITE_TAB_BATCH) {
             val name = siteTabsQueue.removeAt(0)
             if (!existsSiteTab(name)) {
                 mBinding.tabLayout.addView(getSiteTextView(name))
                 built++
+            }
+        }
+        if (built > 0) {
+            // 布局是异步的：addView 之后 onLayout 要到下一帧才跑 ⇒ 必须 post 到下一帧再读一次 scrollY
+            mBinding.tabLayout.post {
+                l1Trace {
+                    "[l1] 左栏插入：批量=$built 标签=$tagName 距末滚动=${traceGapMs}ms" +
+                            " 前Y=$traceBeforeY 后Y=${mBinding.tabLayout.scrollY}" +
+                            " 滚动段=${traceRunMs}ms/${traceRunEvents}次" +
+                            " 队列=${siteTabsQueue.size} 待建=${siteTabsPending.size}" +
+                            " 可滚=${mBinding.tabLayout.needScroll} 上限=${mBinding.tabLayout.maxScrollY}" +
+                            " chip=${mBinding.tabLayout.childCount}"
+                }
             }
         }
         if (siteTabsQueue.isNotEmpty()) {
