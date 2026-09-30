@@ -22,7 +22,7 @@ GRADLE_USER_HOME="$WS/.guserhome2"
 GD="<本机>/.gradle/wrapper/dists/gradle-7.3.3-bin/6a41zxkdtcxs8rphpq6y0069z/gradle-7.3.3/bin/gradle.bat"
 SDK="$ANDROID_HOME/build-tools/33.0.2"
 JKS="$ROOT/TVBoxOSC.jks"
-KS_PASS="<签名口令>"   # 换机后填回你的签名口令（与 TVBoxOSC.jks 配对）
+KS_PASS="TVBoxOSC"   # 签名口令（与 keystore/TVBoxOSC.jks 配对，别名 tvboxosc）
 ALIAS="tvboxosc"
 
 NAME="${1:-L1Box_v1.1.1_release_20260902}"

@@ -43,6 +43,13 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 > 注：`gradle.properties` 中的 `kotlin.compiler.execution.strategy=in-process` 是为低内存机器
 > （Kotlin 守护进程原生内存分配失败）保留的稳妥设置，内存充足时可改回默认。
 
+### 签名
+
+签名库在 [`keystore/`](keystore/)（`TVBoxOSC.jks`，另有备份 `TVBoxOSC_custom_backup.jks`）：
+口令 **`TVBoxOSC`**、别名 **`tvboxosc`**。`scripts/build_l1box.sh` / `sign_l1box.sh` 已配好这对参数；
+用 gradlew 手动构建时，把 jks 放到工程目录并对应修改签名参数。
+**升级安装必须同一签名** —— 换签名库会导致已装用户必须卸载重装。
+
 ## 目录结构
 
 ```

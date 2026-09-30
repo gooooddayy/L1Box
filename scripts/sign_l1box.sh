@@ -4,7 +4,7 @@
 set -e
 SDK="$USERPROFILE/AppData/Local/Android/Sdk/build-tools/33.0.2"
 JKS="$USERPROFILE/WorkBuddy/2026-08-19-14-43-05/FreeBox-src/TVBoxOSC.jks"
-KS_PASS="<签名口令>"   # 换机后填回你的签名口令（与 TVBoxOSC.jks 配对）
+KS_PASS="TVBoxOSC"   # 签名口令（与 keystore/TVBoxOSC.jks 配对，别名 tvboxosc）
 ALIAS="tvboxosc"
 IN="$1"
 OUT="${IN%.apk}_signed.apk"
