@@ -106,11 +106,12 @@ must    "$PS" 'MAX_RECORDS = 300' "进度记录有上限并会淘汰最旧（避
 must    "$PF" 'ProgressStore\.save' "播放进度写入独立存储"
 must    "$PF" 'String progressKey = mVodInfo\.sourceKey' "进度键仍由 源+剧ID+线路+集数 构成（含易变播放地址则永远对不上）"
 must    "$PF" 'progress >= dur \* 95 / 100' "进度到 95% 视为看完：清记录，下次从头播（否则一进去就跳片尾）"
-must    "$PF" 'pos < 10000' "续播位置不足 10 秒不提示（刚开头弹提示是打扰）"
-must    "$PF" '已从 ' "断点续播有「已从 XX:XX 继续播放」提示"
+must    "$PF" 'rec < 10000' "续播位置不足 10 秒不提示（刚开头弹提示是打扰）"
+must    "$PF" 'showResumeJumpTip\(rec\)' "断点续播改走**画面中央可点的「点击跳转 xx:xx」**（09-23 #5：进场从头播，点它才跳）"
+mustnot "$PF" '已从 ' "旧的「已从 XX:XX 继续播放」底部 Toast 不得回归（已被中央浮层取代）"
 must    "$PF" '已跳过片头 ' "片头跳过有「已跳过片头 XX 秒」提示"
 mustnot "$PF" 'CacheManager\.save\(MD5\.string2MD5\(url\)' "播放进度不得写回 cache 表（与历史/收藏同库，加字段要换库文件＝历史全丢）"
-must    "$SW" '已跳过片头 |已从 ' "续播/片头提示已进 Toast 白名单（否则被清扫器当 jar 弹窗移除，用户看不到）"
+must    "$SW" '已跳过片头 ' "片头提示已进 Toast 白名单（否则被清扫器当 jar 弹窗移除，用户看不到）"
 must    "$VC" 'boolean hasNext\(\);' "控制器可判断后面还有没有剧集（最后一集要停在最后一帧）"
 must    "$VC" 'onWindowVisibilityChanged' "退后台必须停表（View 不会 detach，否则在后台自己跳集）"
 must    "$VC" 'cancelNextEpisodeTip\(\);' "倒计时可取消"
@@ -264,7 +265,7 @@ must    "$FS" 'getSearch\(key, searchTitle\)$' "搜索走两参调用（quick=fa
 count   "$FS" 'getSearch\(key, searchTitle, ' 0 "三参 getSearch 调用不得复现（true 是 ae 遗留，false 也无需显式传）"
 must    "$SV" 'sp\.searchContent\(wd, quick\)' "搜索请求透传 quick 开关（写死 false 会把提速整体退化）"
 must    "$FS" 'bucket\.any \{ it\.id == video\.id \}' "去重仅限同站点+影片ID（跨源同名片/不同版本/不同站点一律保留，绝不合并）"
-must    "$FS" 'setNewData\(ArrayList\(list\)\)' "过滤视图必须复制桶（不与 adapter 共享引用）"
+must    "$FS" 'searchAdapterFilter\.setNewData\(if \(list == null\) ArrayList\(\) else ArrayList\(list\)\)' "过滤视图必须复制桶（不与 adapter 共享引用）"
 must    "$FS" 'if \(firstWaveFinished\) return' "收尾幂等（正常归零与看门狗超时两条路径只能生效一次）"
 must    "$FS" 'else if \(pendingResults\.isNotEmpty\(\)\)' "收尾后的迟到结果仍要落地（只落地，不再判空态）"
 must    "$FS" 'isFilterMode = true' "进入过滤视图要置位（上游从未赋值的老 bug）"
@@ -318,9 +319,32 @@ must    "$JL" 'initializingJarKeys\.add\(key\)' "加固 jar 初始化窗口要�
 must    "$JL" 'initializingJarKeys\.remove\(key\)' "初始化窗口结束要摘除（与 add 成对，防残留永久拒服务）"
 must    "$JL" 'proxyQuietUntil\.put\(key, SystemClock\.elapsedRealtime\(\) \+ PROXY_QUIET_MS\)' "init 返回后要记静默期（代理在 init 之后才真正监听端口）"
 must    "$JL" 'PROXY_QUIET_MS = 800L' "静默期取实测值 800ms（勿回退 2000ms：那是按错误的 1.4~1.6 秒估算，过度保护会白丢首轮结果）"
-must    "$JL" 'if \(isNativeWindow\(key\)\) return proxyNotReady\(\)' "未就绪窗口内不碰 native，直接返回 503"
+must    "$JL" 'if \(isNativeWindow\(key\)\) return proxyDeny\(' "未就绪窗口内不碰 native，直接返回 503（走统一拒绝出口，便于留诊断日志）"
 must    "$JL" 'private boolean isNativeWindow' "门禁判据集中在 isNativeWindow"
-must    "$JL" 'protectedJarKeys\.contains\(key\) && !key\.equals\(ProtectedInitJar\.proxyHolderKey\(\)\)' "非持有者的加固 jar 一律事前 503；持有者身份与 key 同源（不再有第二份会各自过期的账本）"
+# 💡 2026-09-28 修正：这条原来是 `!key.equals(proxyHolderKey())` —— 它把**手绑成功**的 jar 也一起挡了。
+# 手绑成功（"承接已有的本地代理"，getLoader 已连上正在跑的代理）本身就证明原生引用有效，却因为
+# occupyProxy() 只在"jar 自己重启代理"时被调用而永远进不了 holder 名单 ⇒ 它的代理型站点被**永久** 503。
+# 实测：`WexAiYueYue` 下发的 `127.0.0.1:9978/proxy?do=…` 被瞬时拒绝（预取 7ms 失败、jar 的 localProxy
+# 从未被调用），cb/cc/dd **三轮 /proxy 一次都没成功**。现在改由 proxyCapable() 判定：holder 照旧放行，
+# 手绑 jar 只有在"绑定时那一任代理至今仍活着"（holder 与世代都没变）时才放行 —— 防线不降级。
+mustnot "$JL" '!key\.equals\(ProtectedInitJar\.proxyHolderKey\(\)\)' "不得再用「必须是 holder」单判据（会把合法的代理持有者换掉）"
+must    "$JL" 'protectedJarKeys\.contains\(key\) && !ProtectedInitJar\.proxyCapable\(key, null\)' "非代理持有者的加固 jar 才事前 503（手绑且世代有效者必须放行）"
+must    "$JL" 'ProtectedInitJar\.proxyCapable\(key, mcl\)' "ClassLoader 终审同样要给「手绑且世代有效」留出口（否则第一道放行、第二道又挡回去）"
+must    "$PI" 'static boolean proxyCapable\(String key, ClassLoader loader\)' "代理可用性必须由 ProtectedInitJar 单一裁决"
+must    "$PI" 'PROXY_GEN\.incrementAndGet\(\)' "持有者每接管一次，代理世代必须 +1（否则旧的手绑引用会被误判成活着的）"
+count   "$PI" 'PROXY_GEN' 3 "世代号必须齐备：声明/接管自增/诊断打印（已不参与放行判据，见 cf 组）"
+must    "$PI" 'hb\.holderKey\.equals\(PROXY_HOLDER_KEY\)' "手绑放行必须校验「绑定时那一任持有者仍是当前持有者」"
+# ⚠️ 原来这里断言的是 `hb.gen != PROXY_GEN.get()`（放行时比世代号）——
+# ce 轮实测证明那是 bug：世代号每次 occupyProxy 都 +1、与「这个 jar 还能不能用当前代理」无关，
+# 导致先手绑的 jar 必然被后续接管顶掉、站点 100% 503。该断言已改到 cf 组（mustnot hb.gen）。
+must    "$PI" 'rememberHandBound\(clz, key\)' "手绑成功必须记账（否则 /proxy 永远进不来）"
+must    "$JL" 'private void proxyLog\(' "/proxy 必须有诊断日志出口（原来全程静默，失败了查不到原因）"
+must    "$JL" '本地代理：do=' "诊断日志必须打出 do / key / 持有者 / 判定 / 耗时"
+must    "$JL" 'proxyLogAt' "诊断日志必须节流（HLS 分片会把日志冲爆）"
+must    "$JL" 'private static String briefJarKey' "日志里 jar key 必须截断（可读性）"
+must    "$RS" 'proxy unavailable' "/proxy 拿不到结果时必须明确回 503（原来是 NPE ⇒ 500 ⇒ 播放器只看到 Exo 2004）"
+must    "$RS" '!\(rs\[0\] instanceof Integer\)' "/proxy 必须对返回结构做空安全，不得再直接 (int) rs[0]"
+mustnot "$RS" 'int code = \(int\) rs\[0\];' "不得再无条件强转 rs[0]（proxyInvoke 返回 null 时就是 NPE）"
 # 门禁必须排在真正下发 native 之前，否则等于没加
 _gate_line=$(grep -n 'isNativeWindow(key)' "$ROOT/$JL" | head -1 | cut -d: -f1)
 _call_line=$(grep -n 'proxyMethods\.get(key)' "$ROOT/$JL" | head -1 | cut -d: -f1)
@@ -415,7 +439,7 @@ must    "$JL" 'ProtectedInitJar\.isHolderClassLoader\(mcl\)' "非持有者家族
 must    "$PI" 'private static volatile boolean NATIVE_INIT_IN_PROGRESS' "要有进程级初始化标志（按 key 的门禁管不住别的 jar）"
 must    "$PI" 'NATIVE_INIT_IN_PROGRESS = true;' "init 全过程必须置位（否则 killall 窗口内仍会放进 /proxy）"
 must    "$PI" 'NATIVE_INIT_IN_PROGRESS = false;' "init 结束必须复位（否则 /proxy 永久 503）"
-must    "$JL" 'if \(ProtectedInitJar\.nativeInitInProgress\(\)\) return proxyNotReady\(\)' "/proxy 入站必须先查进程级初始化标志（早于按 key 的判断）"
+must    "$JL" 'if \(ProtectedInitJar\.nativeInitInProgress\(\)\) return proxyDeny\(' "/proxy 入站必须先查进程级初始化标志（早于按 key 的判断）"
 must    "$PI" 'FAMILY_LOADERS' "" # 身份账本本体
 must    "$PI" 'PROBE_CACHE\.remove\(cl\)' "loader 被丢弃时精确清探测缓存（批次二起整体 clear 会让服役中的 loader 白探测一遍）"
 mustnot "$JL" 'private final boolean mainLoader' "主实例标记已撤除：换届只由 init 成功驱动，不再有第二个裁判"
@@ -479,9 +503,11 @@ echo "===== V. 冷启动首搜不得把「装载中」判成「空源」（2026-
 must    "$AC" 'private volatile boolean sitePoolSettled = false' "站点池装载定论标志存在且 volatile（跨线程可见）"
 count   "$AC" 'sitePoolSettled = true' 4 "四处装载出口都要置位：订阅解析完、无订阅、首页源就绪、重试用尽"
 must    "$AC" 'public boolean isSitePoolSettled\(\)' "搜索入口要能查询装载是否已有定论"
-must    "$FS" 'isSitePoolSettled\(\) && readyRetry < READY_RETRY_MAX' "搜索侧先区分「未就绪」与「真空态」，未就绪时重试而不是给空态"
-must    "$FS" 'postDelayed\(readyRetryRunnable, READY_RETRY_DELAY_MS\)' "未就绪重试必须真的排上定时任务"
-must    "$FS" 'readyRetry = 0' "重试计数必须在新一轮搜索入口复位"
+must    "$FS" 'private fun handleNoSearchableSite\(\)' "无可搜站点必须分流：未就绪→等待／订阅未加载成功→单独成态／其余→诚实空态（09-23 #2 定稿）"
+must    "$FS" 'if \(!ApiConfig\.get\(\)\.isSitePoolSettled\(\)\) \{' "池未定论时不得判空，必须走等待（S1 没有任何通往「暂无数据」的路径）"
+mustnot "$FS" 'readyRetry < READY_RETRY_MAX' "等待不得再有时间上限（09-23 #2 定稿：等够时间＝没有结果，逻辑上不成立）"
+must    "$FS" 'postDelayed\(waitTickRunnable, READY_RETRY_DELAY_MS\)' "等待必须真的排上探池定时任务（纯内存读，零网络请求）"
+must    "$FS" 'readyRetry = 0' "探池节拍计数必须在新一轮搜索入口复位"
 must    "$FS" 'isNotEmpty\(\) && !mCheckSources!!\.containsKey' "空勾选集合不等于全都不选（否则冷启动会被滤成空源）"
 must    "$DA" '!mCheckSources\.isEmpty\(\) && !mCheckSources\.containsKey' "详情页换源搜索同一处判据必须一致"
 
@@ -504,16 +530,16 @@ must    "$AC" 'return mHomeSource == null \? emptyHome : mHomeSource' "首页源
 must    "$JL" 'public static long loadSeq\(\)' "jar 装载序号必须可查询（搜索侧判断本轮是否与初始化重叠）"
 must    "$JL" 'LOAD_SEQ\.incrementAndGet\(\)' "装载序号必须在每次装载有结论时自增（含失败，用 finally）"
 must    "$FS" 'roundLoadSeq = JarLoader\.loadSeq\(\)' "发起搜索时必须快照装载序号，否则收尾无从比对"
-must    "$FS" 'private fun verdictEmpty\(\)' "0 结果必须统一走裁决，不得各出口自行判空"
-count   "$FS" 'verdictEmpty\(\)' 3 "裁决函数本体 + 两处收尾调用（首波归零、看门狗超时）"
-must    "$FS" '!roundPoolSettled \|\| \(seqNow != roundLoadSeq\)' "不可信判据＝站点池尚未定论 ‖ 本轮有 jar 装载落定"
-must    "$FS" '正在初始化播放源，自动重试…' "自动重搜必须有明确提示（不能让用户以为卡住）"
-must    "$FS" 'removeCallbacks\(autoResearchRunnable\)' "页面销毁要清掉自动重搜定时任务"
+must    "$FS" 'private fun reviewZeroResult\(\)' "0 结果必须统一走复检，不得各出口自行判空（09-23 起由 verdictEmpty 改名为 reviewZeroResult，语义更好且新增四条完整性判据）"
+count   "$FS" 'reviewZeroResult\(\)' 3 "复检函数本体 + 两处收尾调用（首波归零、看门狗超时）"
+must    "$FS" 'sigNow == roundPoolSig' "不可信判据之一＝池签名（池大小+定论+装载序号）与发起时逐字相同"
+must    "$FS" 'poolReady && askedAll && unchanged && zero' "四条完整性判据必须同时成立才允许给空态（判据由「时间」改成「完整性」是 09-23 #2 的核心）"
+must    "$FS" 'removeCallbacks\(waitTickRunnable\)' "页面销毁要清掉探池定时任务"
 must    "$SW" '正在初始化播放源' "新 Toast 文案必须进宿主白名单，否则会被当 jar 弹窗移除（白名单是允许列表）"
-must    "$FS" 'AUTO_RESEARCH_MAX = 2' "自动重搜必须有上限（源真的没结果时要能收敛到空态）"
-must    "$FS" 'READY_RETRY_MAX = 40' "站点池等待预算 20 秒（2026-09-22 拍板：A8 实测就绪可晚到 ≈+16.5s，5s 天生踩空；计数全程共享 ⇒ 最长等 20s）"
-must    "$FS" 'INIT_HINT_AT_RETRY' "等待 ≈2s 就要给「正在初始化」提示（09-22 拍板 Q1：不能等预算用尽才说，观感是提示→马上失败）"
-must    "$FS" 'fromWaitingRetry: Boolean = false' "搜索诊断基线必须区分自旋重试入口，否则收尾总耗时是假计时（实测 总耗时=7ms）"
+mustnot "$FS" 'AUTO_RESEARCH_MAX' "重搜不得再有写死次数上限（09-23 #2：改由「池每变一次放行一次」，天然收敛且不空转）"
+must    "$FS" 'LOADING_SWITCH_AT_RETRY' "20 秒后只把文案换成「播放源仍在加载」，继续转圈继续等（不是失败）"
+must    "$FS" 'INIT_HINT_AT_RETRY' "等待 ≈2s 就要给「正在初始化」提示（09-22 拍板 Q1：不能等到失败才说，观感是提示→马上失败）"
+must    "$FS" 'fromWaitingRetry: Boolean = false' "搜索诊断基线必须区分「等池」入口，否则收尾总耗时是假计时（实测 总耗时=7ms）"
 
 echo "===== X. 播放成功率·第一批：速度 + 兜底正确性 + 埋点（2026-09-15） ====="
 # 背景：搜索结果来自不同站点，地址格式千奇百怪，播放失败分三类 ——
@@ -639,7 +665,14 @@ must    "$PF" 'mFailHandledAt = mPlayStartedAt;' "处理失败时必须记下这
 # —— 埋点补全（原来真失败一条都没记，等于没有数据）
 must    "$PF" 'PlayTrace\.fail\("出链"' "兜底试尽这个真失败出口必须记埋点（原来只记 stage）"
 must    "$PF" 'mFetchStartedAt' "取链看门狗必须记真实耗时（原来写死 -1）"
-must    "$PF" 'purifyFailKind' "净化预取失败要粗归因（区分本机代理地址与远端，用于统计而不是猜）"
+must    "$PF" 'purifyFailKind' "净化预取失败要归因（区分本机代理地址与远端，用于统计而不是猜）"
+# 2026-09-28：原来只打异常**类名**，`HttpException` 把 403/404/502 混成一个字符串，而三者修法毫无
+# 共通之处（403=防盗链补头、404=地址失效重取无意义、5xx=源站问题）⇒ 必须把状态码打出来。
+must    "$PF" 'com\.lzy\.okgo\.exception\.HttpException' "净化失败必须取到 HTTP 异常对象"
+must    "$PF" '"Http" \+ ' "净化失败必须把 HTTP 状态码打进埋点"
+mustnot "$PF" 'String type = \(th == null\)' "不得再只打异常类名（状态码被丢掉就永远定不了刀）"
+must    "$PF" '连接超时' "超时必须与连接失败分开"
+must    "$PF" 'DNS解析失败' "DNS 解析失败必须单独成类"
 # —— A2 遗留：净化内容的跨线程可见性
 must    "$RS" 'public static volatile String m3u8Content;' "净化内容必须是 volatile（写方是 OkGo 回调线程、读方是 NanoHTTPD 工作线程）"
 # —— 本集重播总预算：每一档都空转时，用户不该盯着转圈两分半
@@ -678,8 +711,6 @@ must    "$PF" 'isLoopbackUrl\(mPlayingUrl\)' "本机代理地址不得做 http�
 mustnot "$PF" 'isLocalHlsUrl\(mPlayingUrl\)\) return false' "变形守卫不得只挡 /l1.m3u8（漏掉网盘源的 /proxy）"
 # —— 不是 URL 的地址必须在起播前判掉
 must    "$PF" 'isPlayableUrl' "非 URL 地址必须在起播前判掉"
-must    "$PF" 'PlayTrace\.fail\("地址"' "非 URL 地址必须留痕（否则这类失败统计不到）"
-must    "$PF" 'Thunder\.isSupportUrl' "判据必须放行迅雷专用通路（magnet/ed2k/torrent 不带 ://）"
 
 echo "===== AB. 播放成功率·第五批：失败先退避重取 + 判据简化（2026-09-17 aw 真机实测） ====="
 # 背景：aw 真机复测（40 次点播 / 4 个站点 / 16 次失败）把「一进去就是重试」钉死了：
@@ -1090,20 +1121,652 @@ echo "===== AE. P1 重新取链档 + 搜索等待 20s + 初始化提示时机（
 # 都在同一条死链上打转，唯一有效的动作「重新取链」只能靠用户手动点重试（实测立刻救回 403/627ms）。
 # 拍板：把该动作自动化，但必须带护栏 —— once（本集一次）+ 起播阶段总时长上限；
 # errorFinal 仍是终态出口。同时搜索等待预算 5s→20s（就绪实测最长 ≈+16.5s）。
-must    "$PF" 'tryRefetchOnce' "兜底链必须先尝试一次自动重新取链再进终态出口（09-22 两例实证手动重取立刻救回）"
-must    "$PF" 'if \(mRefetchTried\) return false;' "重新取链必须有 once 护栏（本集一次，否则回到 errorFinal 注释警告的无界重取）"
+must    "$PF" 'tryRefetchOnce' "兜底链必须先尝试自动重新取链再进终态出口（09-22 两例实证手动重取立刻救回）"
+must    "$PF" 'REFETCH_MAX = 2' "重新取链上限 1→2（09-23 用户拍板；只在起播已判失败之后发生，不拉长正常起播）"
+must    "$PF" 'if \(mRefetchTried >= REFETCH_MAX\) return false;' "重取护栏必须是**计数式**上限（退回布尔 once 就等于只重取一次）"
+mustnot "$PF" 'if \(mRefetchTried\) return false;' "不得退回 once 布尔护栏（09-23 已放宽到 2 次）"
 must    "$PF" 'REFETCH_TOTAL_BUDGET_MS = 20000' "起播阶段的重新取链必须有总时长上限（防「每一步都空转」病理复活）"
 must    "$PF" 'mPlaybackHadStarted && tryRefetchOnce\("播放中断", false\)' "播放中断（就绪过）的重取不得受取链预算约束（地址已被证明有效，中途死亡可在任意时刻）"
 must    "$PF" 'tryRefetchOnce\("起播兜底试尽", true\)' "起播兜底试尽的重取必须受总时长上限约束"
 must    "$PF" 'mPlaybackHadStarted = true' "「播放中断」必须以 prepared 为前提（不得拿起播尝试当就绪）"
 mustnot "$PF" 'if \(mPlaybackHadStarted && tryRefetchOnce\("播放中断", true\)\)' "播放中断的重取不得套总时长上限（会永远轮不到重取）"
-must    "$PF" 'mRefetchTried = false; // P1：换集' "换集必须复位 once 护栏（每集独立一次）"
-must    "$PF" 'mRefetchTried = false; // P1：用户手动重试' "手动重试必须同时复位 once 护栏（用户重试后自动重取额度要重新给满）"
-must    "$FSRCH" 'READY_RETRY_MAX = 40' "搜索等待预算必须是 20s（09-22 拍板，见 X 节）"
+must    "$PF" 'mRefetchTried = 0; // P1：换集' "换集必须复位重取额度（每集独立）"
+must    "$PF" 'mRefetchTried = 0; // P1：用户手动重试' "手动重试必须同时复位重取额度（用户重试后自动重取额度要重新给满）"
+must    "$FSRCH" 'LOADING_SWITCH_AT_RETRY = 40' "搜索等待 20s 的语义保留（09-23 起它只切文案、不再判失败，见 V/W 节）"
 
-if [ $FAIL -ne 0 ]; then
-  echo "!! 回归闸门未通过：上面每一项都是修过的老问题，请先修好再出包" >&2
-  exit 1
-fi
-echo "===== 回归闸门全部通过 ====="
+echo "===== AF. 2026-09-23 十项改动（#1~#10 定稿批次） ====="
+# 背景：用户一次提十条体验问题，逐条定稿后实施（见 _l1_docs/00_总纲与索引/本轮10项需求改动方案_定稿_20260923.md）。
+# 每条下面都写清「回退后会退到什么症状」。判据一律取**语义**（关键判据 / 调用形态），不锚某行原文。
+SAD=app/src/main/java/com/github/tvbox/osc/ui/adapter/SourceAdapter.java
+CSD=app/src/main/java/com/github/tvbox/osc/ui/dialog/ChooseSourceDialog.java
+HH=app/src/main/java/com/github/tvbox/osc/util/HistoryHelper.java
+RDM=app/src/main/java/com/github/tvbox/osc/cache/RoomDataManger.java
+HKC=app/src/main/java/com/github/tvbox/osc/util/HawkConfig.java
+MPC=player/src/main/java/xyz/doikki/videoplayer/controller/MediaPlayerControl.java
+VV=player/src/main/java/xyz/doikki/videoplayer/player/VideoView.java
+LST=app/src/main/res/layout/activity_setting.xml
 
+# #1 搜索历史词长按直接删除（回退：长按无反应）
+must    "$FS" 'private fun removeSearchHistory\(word: String\)' "长按删除单条历史要有实体实现"
+must    "$FS" 'history\.remove\(word\)' "必须按**文本**删除：删一条后其余条目整体前移，按下标会删错"
+must    "$FS" 'getChildAt\(i\)\.setOnLongClickListener' "长按必须挂在 TagFlowLayout 包出来的容器上（库对标签控件 setClickable(false) 并自己吃掉按钮事件，挂控件上会让单击搜索失效）"
+
+# #2 搜索假空（结构性地消灭；单独成态的那部分在 V/W 节）
+must    "$FS" 'private enum class Phase \{ S1, S2, S3, S4, S5, SUB_FAIL \}' "四态状态机要在：S1 等待可搜／S2 搜索中／S3 复检／S4 诚实空态（S1 无上限、且没有通往空态的路径）；S5＝A 的补全守卫（09-24 加入）"
+must    "$FS" 'private fun poolSignature\(\)' "探池必须有统一的池签名（站点数＋定论＋主jar＋站点集合指纹＋池来源，纯内存读零请求；bv 已把装载序号撤出——它是装载活动计数器，不是池内容变化的信号）"
+must    "$FS" 'hasSubscription\(\) && hasSubUrl\(\)' "订阅未加载成功＝池已定论＋池里空＋有订阅地址，必须单独成态而不是冒充「暂无数据」"
+must    "$FS" 'private var subReloadTried = false' "同址重拉必须有「每启动最多 1 次」护栏（地址不对时重拉一百次也还是不对）"
+must    "$FS" 'loadConfig\(false, object : LoadConfigCallback' "同址重拉必须复用现成的订阅装载入口：**地址一字不改**，是重试不是换源"
+must    "$FS" 'TipDialog\(' "订阅失败的出口只留「重试」：复用现成弹窗与布局，不新增界面元素"
+mustnot "$FS" '正在初始化播放源，自动重试' "「自动重试…」这种把内部机制外泄、且观感是「提示→马上失败」的文案不得回归"
+
+# #3 播放错误提示：照常弹，起播成功就自动收掉（判死秒数一字不动）
+must    "$VC" 'void playing\(\);' "播放器必须把「真的开始播放」回调出来（与 prepared 区分开）"
+must    "$VC" 'if \(listener != null\) listener\.playing\(\);' "STATE_PLAYING 必须触发该回调，否则提示会一直压在正在播放的画面上"
+must    "$PF" 'public void playing\(\)' "播放页必须实现它：起播成功＝错误提示的使命结束，收起提示层"
+
+# #4 冷启动快速进历史记录显示空白（池未装载完不得丢弃记录）
+must    "$RDM" 'boolean poolSettled = ApiConfig\.get\(\)\.isSitePoolSettled\(\)' "读历史时只有「池已定论」才允许丢弃取不到源的记录（池在途就丢弃＝所有记录被静默丢掉→空态）"
+must    "$HA" 'showLoading\(\)' "历史页必须有加载态（注册状态框架后不显示加载态＝数据回来前是真空白）"
+
+# #5 续播：进场从头播 + 画面中央「点击跳转 xx:xx」，点它才跳
+must    "$VC" 'public void showResumeJumpTip\(long pos\)' "续播提示必须是画面中央可点的浮层（不再自动跳、不再用底部 Toast）"
+must    "$CT" 'resume_jump_layer' "中央浮层必须有实体布局"
+must    "$VC" 'RESUME_JUMP_SHOW_MS = 5000L' "续播提示停留 5 秒（09-24 用户反馈 2 秒偏短、手还没动就没了）"
+must    "$VC" '点击跳转 ' "续播提示文案必须点明「可点击」：只写「跳转到」用户不知道能点"
+must    "$CT" 'shape_player_resume_jump_bg' "续播提示必须用独立的半透明淡绿背景，不得与连播浮层共用深色面板（改一边不牵连另一边）"
+must    "$CT" 'paddingHorizontal="14dp"' "续播提示内边距收到 14dp（09-24 用户反馈原 24/14dp 的面板「太大画幅」）"
+mustnot "$VC" 'setText\("跳转到 ' "旧文案（未点明可点击）不得回归：文案必须与「点击跳转」一致"
+must    "$PF" 'return getSkipIntroSec\(\) \* 1000L;' "存档进度不得再回给内核自动跳（VideoView.onPrepared 会立刻 seekTo）：跳不跳交给用户点"
+mustnot "$PF" 'mResumeTipPos' "旧的「底部 Toast ＋ 自动跳」承载字段必须删干净"
+
+# #6 线路列表高亮当前线路（旧写法恒 null，从未生效）
+must    "$SAD" 'public void setSelectedUrl\(String url\)' "高亮必须由「当前线路地址」驱动"
+must    "$CSD" 'setSelectedUrl\(pickCurrentUrl\(\)\)' "选中态必须在 setNewData **之前**设置"
+mustnot "$CSD" '\.findViewHolderForAdapterPosition\(' "setNewData 之后立刻取 ViewHolder 恒为 null，这种**调用**不得回归（注释里提它是允许的：要留痕说明为什么不能这么写）"
+
+# #7 播放器画质显示按旋转角对调宽高（回退：90°/270° 的片子显示成竖着的假分辨率）
+must    "$MPC" 'int getVideoRotation\(\);' "内核必须能把旋转角给出来（内核加取值接口）"
+must    "$VV" 'mVideoRotation = extra;' "旋转角必须真的被记下来（MEDIA_INFO_VIDEO_ROTATION_CHANGED）"
+must    "$VC" 'getVideoRotation\(\) % 180\) != 0' "显示画质时必须按旋转角对调宽高"
+
+# #8 外部播放器（MX）约 10 秒结束 → 改喂本机转发端点
+must    "$PH" 'public static String wrapForExternalPlayer' "外部播放器入口必须统一收口到包装函数（唯一改法，避免各播放器各改一遍）"
+# 2026-09-24 bt **撤回**旧口径「没有请求头就原样返回」：真机 D1 实测证明它正是根因 ——
+# 站点直链普遍不下发 headers，这条判据把绝大多数外部播放都静默退回了（日志里连包装埋点都不出现），
+# MX 拿到裸地址 → 上游 403 → 约 12 秒结束。零开销的边界因此收窄为下面两条，缺头一律先补同源 Referer。
+must    "$PH" 'if \(url == null \|\| url\.isEmpty\(\)\) return url;' "空地址原样返回（零开销边界一）"
+must    "$PH" 'if \(isLoopbackUrl\(url\)\) return url;' "已是本机地址原样返回（零开销边界二）"
+mustnot "$PH" 'playerType == 13' "RemoteTVBox 是把地址 **POST 给局域网另一台设备**的：塞 127.0.0.1 会指到那台设备自己，必须排除"
+must    "$RS" 'private Response servePlayForward' "本机转发端点必须存在"
+# 2026-09-24 bt **改写**旧口径「/l1play 与 localfile 同一道仅供本机门禁」：投屏（DLNA 设备自己拉流）
+# 必须经局域网可达的本机转发才带得上请求头，所以门禁改为「带一次性投屏码才放行，没码仍只允许本机」。
+# 这里只断「无码那一档没丢」；门禁行不得整条放开由 AH 节的正向断言负责。
+must    "$RS" 'if \(!local\) \{' "servePlayForward 内必须保留「非本机且无码 ⇒ 拒绝」这一档"
+must    "$RS" 'rb\.header\("Range", range\);' "必须透传 Range（少了这步只能播不能拖）"
+must    "$RS" 'resp\.addHeader\("Content-Range", cr\);' "必须原样回传 Content-Range（少了这步只能播不能拖）"
+must    "$RS" 'header\("Accept-Encoding", "identity"\)' "必须关掉 OkHttp 透明 gzip：否则长度/范围按解压后字节重算，Range 的字节账对不上"
+must    "$RS" 'probe\.addHeader\("Content-Length"' "HEAD 探测必须回真实长度且**不**发正文（NanoHTTPD 对 HEAD 仍会照发正文，必须自己掐掉）"
+
+# #9 缩放：设置页＝全局；播放器内＝只对当前影片当前线路
+must    "$PH" 'isScalePicked' "「用户单独调过缩放」必须留痕（否则分不出「跟全局走」与「已经单独调过」）"
+must    "$PF" 'PlayerHelper\.isScalePicked\(mVodPlayerCfg\)' "无标记时必须**每次播放实时读**设置页全局值（原来只在首次播放抄一次、抄完就落盘）"
+must    "$VC" 'PlayerHelper\.markScalePicked\(mPlayerConfig\)' "播放器内改缩放必须打标记并存档（此后设置页再改不动它）"
+
+# #10 设置页删两个条目 + 条数固定 50
+must    "$HH" 'HIS_NUM = 50' "历史保留条数固定 50"
+must    "$RDM" 'HistoryHelper\.HIS_NUM' "历史查询上限必须取统一的 50，不得再写死别的数"
+mustnot "$HKC" 'HISTORY_NUM' "条数选择器的配置键必须删干净"
+mustnot "$SA" 'tvHistoryNum' "设置页「历史记录」条目必须撤除（含代码绑定）"
+mustnot "$SA" 'tvCrashLog' "设置页「导出崩溃日志」条目必须撤除（崩溃日志本身仍照常落盘）"
+mustnot "$LST" 'llHistoryNum' "设置页「历史记录」布局必须撤除"
+mustnot "$LST" 'llCrashLog' "设置页「导出崩溃日志」布局必须撤除"
+
+echo "===== AG. 2026-09-24 A（缓存清单先开搜 · 档 2：预热＋自动补全）====="
+# 背景：冷启动时站点池要等**网络**拉订阅（实测就绪 4.7~16.5 秒），这段真空里搜索只能转圈。
+# 方案：先用「本地址上次成功拉取的原文」把池填上（打开就能搜），网络配置到达后**自动补全** ——
+#       只搜新增站点、结果追加在已有结果后面，不清空不重排。
+# 见 _l1_docs/30_成功率与崩溃/缓存清单先开搜_A方案优化定稿_20260924.md。回退任一项，对应症状立刻复发。
+
+# —— 预热：one-shot ＋ 只填数据、不假装"装载完成" ——
+must    "$AC" 'private volatile boolean cacheBootDone = false;' "预热必须一次性（一次启动最多读一次缓存文件）"
+must    "$AC" '!useCache && !cacheBootDone && !bootPoolFromCache && !hasSubscription\(\) && cache\.exists\(\)' "触发条件必须同时成立；其中「池为空」同时挡住切源场景（切源那一刻池里还是旧源站点，非空 ⇒ 压根不读缓存）"
+must    "$AC" 'bootPoolFromCache = true;' "预热成功必须置位，供搜索页分辨「这份定论是缓存给的」"
+
+# —— 假空护栏（本方案的第一红线：不加它会把 #2 刚消灭的假空请回来）——
+must    "$AC" 'public boolean isPoolFromCache\(\)' "必须能把「池来自预热缓存」问出来"
+must    "$FS" 'val poolReady = settled && !cachePool' "复检判据①必须排除缓存池：缓存轮 0 结果只说明「那份清单里没有」，不说明「这个源里没有」"
+must    "$FS" 'val settled = ApiConfig\.get\(\)\.isSitePoolSettled\(\)' "①仍须以「池已定论」为前提：排除缓存池是附加条件，不是替换"
+must    "$FS" 'beginWait\("S3 等网络池"\)' "S3 必须有「等网络池」的出口（缓存池 0 结果时的等待落点）"
+must    "$FS" 'if \(!settled\) \{' "S3 必须先确认池已定论：池还在途时不得判空"
+must    "$FS" '搜索复检：池已稳定且无在途装载' "S3 必须有稳定出口（池定论＋稳定＋无在途装载 ⇒ 承认空态）：堵住「预热后网络失败 ⇒ 无限转圈」"
+count   "$AC" 'bootPoolFromCache = false;' 3 "护栏的三个撤除点（预热失败 / 网络 onSuccess / 网络重试用尽）一个都不能少，少一个就会出现「永远等不到池变化」"
+
+# —— 补全守卫（档 2 的核心）——
+must    "$FS" 'private fun onGuardTick\(\)' "补全守卫要有实体实现"
+must    "$FS" 'private fun beginGuard\(\)' "守卫启动入口要在（正常收尾与超时收尾两条路径都要调）"
+count   "$FS" 'beginGuard\(\)' 3 "两处启动点 + 定义处 = 3：只在正常收尾启动会漏掉「部分站点超时」那条路径"
+count   "$FS" 'guardDone = true' 2 "守卫必须有自锁（最多补一次），否则 jar 陆续装载会把「补一轮」放大成「补很多轮」"
+must    "$FS" 'GUARD_MAX_TICKS = 40' "守卫必须有观测上限（20s，照订阅就绪实测 4.7~16.5s 定的；纯内存探池的兜底出口）"
+must    "$FS" 'println\("搜索补全：源无变化，跳过"\)' "池没变化时必须一个请求都不发（不白搜一遍）"
+must    "$FS" 'println\("搜索补全：差集="' "补轮埋点：这一轮差集几个站点要看得见"
+
+# —— 补轮：只追加、不清空（用户口径：追加在后、不闪不重排）——
+must    "$FS" 'appendOnly: Boolean = false' "searchResult 必须参数化：否则补轮会把已有结果整个洗掉"
+count   "$FS" 'if \(!appendOnly\) \{' 3 "补轮不得清空适配器 / 不得清 tab 与站点名表 / 不得重加「全部显示」——三处都必须在 !appendOnly 保护下"
+must    "$FS" 'if \(appendOnly && roundAskedKeys\.contains\(bean\.key\)\) \{' "补轮只搜首波没搜过的站点（差集），已搜过的不重复请求"
+must    "$FS" 'roundAskedKeys\.addAll\(siteKey\)' "已搜集合必须随每轮累加（它是补轮差集的基准）"
+
+echo "===== AH. 2026-09-24 bt：搜索收敛（A2 无限转圈 / A3 假空）+ 外部播放器转发（D1）+ 投屏转发 ====="
+# A2 症状：生僻词搜索**一直停在加载中**。真机实测 68 轮 / 201 秒 / 0 命中 / 从不给空态。
+# 根因：loadJarInternal 的 finally 原本无条件 LOAD_SEQ++，而装不上的 jar（加固不可用 / 主 jar 未挂载 /
+#       失败）不进 spiders 表，于是每次搜索都被重新查询一遍 → 序号每轮都变 → 池签名永远在变
+#       → S3 复检永不收敛，界面上就是转不完的圈。
+# 修法：同一个 jar 只在**首次**有装载结论时计一次；load() 里账本随 classLoaders.clear() 一起重置。
+# 回退后果：空结果场景原地复活成「无限转圈」。
+must    "$JL" 'if \(SEQ_COUNTED\.add\(key\)\) LOAD_SEQ\.incrementAndGet\(\);' "装载序号必须按 jar 去重（A2 无限转圈的开关就在这一行）"
+count   "$JL" 'LOAD_SEQ\.incrementAndGet\(\)' 1 "装载序号只能有这一个自增点，且必须带去重条件"
+count   "$JL" 'SEQ_COUNTED\.clear\(\);' 1 "load() 里账本必须随 classLoaders.clear() 一起重置，否则重装后不再计数"
+
+# A3 症状：主 jar 未挂载时**8ms 就摆出「暂无数据」**（真机 3/3 复现）——站点依赖主 jar，
+#      getSpider 立刻返回空站点，站点被静默记成 0 条。
+# 修法：把「主 jar 装载是否已有结论」暴露给搜索侧，装载中一律不判空；并统计被跳过的站点数进日志。
+# 回退后果：冷启动首搜 / 刚进 App 就搜，又会闪一个「暂无数据」。
+must    "$JL" 'public static boolean mainSettled\(\)' "必须能问出主 jar 装载是否已有结论"
+count   "$JL" 'MAIN_INFLIGHT\.decrementAndGet\(\);' 1 "主 jar 装载状态必须在 finally 里归零，否则搜索会一直等一个已经结束的装载"
+must    "$JL" 'public static long spiderNullSeq\(\)' "必须有「被跳过的空站点」计数（真机判据：问了没结果 vs 根本没问）"
+count   "$JL" 'return skipNull\(key\);' 3 "三处跳过（主 jar 未挂载 / 加固不可用 / 构造异常）都要计数，少一处就少一份证据"
+# 注意：Kotlin 的运算符在**行尾**，所以 `+` 与 JarLoader.mainSettled() 不在同一行，正则只断后者。
+must    "$FS" '^\s*JarLoader\.mainSettled\(\)' "池签名必须含主 jar 装载状态（装完那一刻签名要变，S3 才会重搜）"
+must    "$FS" 'val mainSettled = JarLoader\.mainSettled\(\)' "复检必须有第五条判据"
+must    "$FS" 'if \(!JarLoader\.mainSettled\(\)\) \{' "S3 必须有「等主 jar 结论」的出口，否则装载中仍会判空"
+must    "$FS" '搜索复检：0 结果 六条判据' "复检日志必须报六条判据（口径与代码同步）"
+mustnot "$FS" '四条' "旧的「四条判据」口径不得残留——它允许在主 jar 装载中就判空"
+mustnot "$FS" '五条判据' "bu 之前的五条口径不得残留——它漏了「本轮新面孔被跳过的站点」"
+must    "$FS" '跳过=' "收尾摘要必须打出跳过站点数，否则真机分不清「问了没结果」和「根本没问」"
+
+# D1 症状：外部播放器（MX）起来后**约 10~12 秒结束**，上游日志 HTTP 403。
+# 根因①：站点直链不下发请求头 ⇒ 包装第一条判据静默退回 ⇒ 播放器拿到裸地址（日志里连包装埋点都没有）；
+# 根因②：转发端点误用默认 client，readTimeout=10s ⇒ 流式转发被掐断（这是「另一个 10 秒」）。
+# 回退后果：外部播放器在有防盗链的源上必然 403，且长时播放 / 拖动会被 10 秒超时打断。
+must    "$PH" 'public static HashMap<String, String> fillMissingHeaders' "兜底补同源 Referer 必须可复用（净化预取与转发两条链路共用一份实现）"
+must    "$PH" 'PlayTrace\.stage\("请求头", "补同源 Referer=" \+ origin\);' "补头必须留埋点（真机要能看见「补了什么」）"
+mustnot "$PF" 'private static HashMap<String, String> fillMissingHeaders' "PlayFragment 里那份重复实现必须已删除，否则两边口径会漂移"
+must    "$PF" 'PlayerHelper\.fillMissingHeaders\(url, rawHeaders\)' "净化链路必须改调共用实现"
+must    "$OG" 'public static OkHttpClient getForwardClient\(\)' "转发端点必须有独立 client"
+must    "$OG" 'readTimeout\(0, TimeUnit\.MILLISECONDS\)' "转发 client 的读超时必须不设限"
+must    "$RS" 'OkGoHelper\.getForwardClient\(\)' "转发端点必须真的用那个 client"
+mustnot "$RS" 'okhttp3\.OkHttpClient client = OkGoHelper\.getDefaultClient\(\);' "转发端点不得再直接用 10 秒读超时的默认 client"
+
+# 投屏：与 D1 同源（DLNA 设备自己去上游取流，天生带不上请求头，缺头就是 403）。
+# 修法：投屏地址换成**局域网可达**的本机转发端点，凭一次性随机码取流。
+# 安全红线：没带码的请求依旧只允许本机（门禁一行没松）；上游地址与请求头不出现在局域网明文里。
+# 回退后果：投屏在有防盗链的源上必然失败；若把「带码才放行」改成「局域网就放行」，
+#           这个端点会变成同网段任何设备都能用的开放代理。
+must    "$RS" 'public static String registerCastForward\(' "必须有投屏码登记入口"
+count   "$RS" 'castForwardLookup\(' 2 "投屏码必须有登记 / 校验两处（定义处 + servePlayForward 调用处）"
+must    "$RS" 'SecureRandom' "投屏码必须来自安全随机数（不可猜）"
+must    "$RS" 'public static String lanIp\(\)' "投屏必须能拿到局域网地址（WifiManager 那条路在热点 / 有线下会给 0.0.0.0）"
+must    "$RS" 'return denied\("该接口仅供本机使用。"\);' "没有投屏码且非本机时仍必须拒绝"
+must    "$RS" 'fileName\.equals\("/dns-query"\)\)\) \{' "门禁行必须只剩 localfile 与 dns-query（/l1play 已改为按码分档，不得整条放开）"
+must    "$PH" 'public static String wrapForCast\(' "投屏地址包装必须在（播放页与详情页两个入口共用）"
+must    "$PH" '/l1play\?t="' "投屏端点必须只带一次性码，不得把上游地址与请求头写进局域网明文"
+must    "$PF" 'PlayerHelper\.wrapForCast\(url, mPlayingHeaders\)' "播放页投屏必须走包装（并沿用当前线路的请求头）"
+must    "$DA" 'PlayerHelper\.wrapForCast\(' "详情页投屏必须走包装（两个入口同一份行为）"
+
+echo "===== AI. 2026-09-24 bu：判空不得吃掉「被跳过的站点」 + 池签名含来源 + 消幽灵收尾 ====="
+# 症状：冷门词（用户实测 `军鸡`）两分钟前在剧圈99 是搜得到的，却被判成「暂无数据」。
+# 根因①：每轮日志都 `跳过=1`（一个 jar 站点没被问到），而五条判据里没有一条看这个数 ——
+#        「40 站里 1 站没问、39 站真没有」和「40 站全问过都没有」被判成同一件事。
+# 根因②（A2 的连带代价）：loadSeq 去重后签名在 jar 首次结论处冻结，「首次装载失败 → 后来装上」
+#        再也不会改签名 ⇒ S3 永不重搜 ⇒ 直接判空。
+# 根因③：缓存池(41 站) 切网络池(41 站) 时前四段签名完全相同 ⇒ 换了内容的池被当成「没变」。
+# 回退后果：冷门片名被系统性吃掉；每轮源里那个本地跑不了的 jar 会让判空永远无法收敛（或反之误判空）。
+must    "$JL" 'public static Set<String> skippedKeys\(\)' "跳过账本必须可快照（判空只看新面孔，不看次数）"
+count   "$JL" 'return skipNull\(key\);' 3 "三处跳过都必须把站点 key 记进账本，少一处就漏一个站点"
+must    "$FS" 'JarLoader\.skippedKeys\(\) - roundSkippedBase' "判空判据必须只看「本轮新面孔」被跳过的站点"
+must    "$FS" '搜索复检：本轮有 ' "有新面孔被跳过时必须先重搜一轮，不得直接判空"
+must    "$FS" '搜索复检：池已稳定但有 ' "S3 出口（真机假空的落点）同样必须先重搜一轮"
+must    "$FS" 'ApiConfig\.get\(\)\.isPoolFromCache\(\)$' "池签名必须含「池来源」，否则缓存池切网络池时签名不变"
+must    "$FS" 'if \(count == 0\) \{' "收尾判据必须是 == 0（初值 0 + 孤立回调会打成 -1 触发伪收尾）"
+mustnot "$FS" 'if \(count <= 0\) \{' "不得再用 <= 0：那会让孤立回调触发一次「本轮没开始」的伪收尾"
+must    "$FS" '新增跳过=' "收尾摘要必须打出新增跳过数（真机要能一眼分清「问了没结果」与「根本没问」）"
+
+echo "===== AJ. 2026-09-24 bv：搜索必须收敛 + 转发端点必须能把 m3u8 分片喂对 ====="
+FSA=app/src/main/java/com/github/tvbox/osc/ui/adapter/FastSearchAdapter.java
+# 症状：bu 复测 A2 四轮**全跑满 30 秒**且**不收敛**（loadSeq 每轮 +4 ⇒ 判据③恒假 ⇒ S3 秒级又起一轮）；
+#       D1-MX 从"10 秒结束"退化成"197ms~1.8s 就报无法播放"（status=-1094995529）。
+# 根因①：判据② 拿 roundAsked 比 roundSiteCount，而两者被赋成同一个值 ⇒ 恒真、测不出"有没有站点没被问到"。
+# 根因②：池签名含 loadSeq（装载活动计数器）⇒ 每轮都在动 ⇒ 池未变恒假。
+# 根因③：两处 getSearch 出口只投无人订阅的 LiveData ⇒ 该站点永不回调 ⇒ 计数漏一格。
+# 根因④：m3u8 清单里 554 个分片全是相对路径，播放器拿转发端点当 base ⇒ 拼到本机 ⇒ 收到 HTML 首页。
+# 回退后果：搜索永远转圈（用户拿不到任何结论）；外部播放器/投屏第一秒就死。
+must    "$FS" 'private fun poolKeySig\(\)' "池签名必须用站点集合指纹表达「内容变没变」（bv 撤出 loadSeq）"
+mustnot "$FS" 'JarLoader\.loadSeq\(\) \+ "\|" \+' "池签名不得再把装载序号当池内容信号（它是每轮都动的活动计数器）"
+must    "$FS" 'ApiConfig\.get\(\)\.getSourceBeanList\(\)\.size\.toString\(\) \+ "\|" \+' "池签名仍必须以站点数起头（判空判据依赖它）"
+must    "$FS" 'private var roundDone = 0' "判据② 必须有真实数据源：本轮实际回调回来的站点数"
+must    "$FS" 'private fun poolKeySig\(\): Int' "站点集合指纹要返回短哈希（进日志不占篇幅）"
+must    "$FS" 'roundDone\+\+' "每个站点回调都必须计入（含空结果回调）"
+mustnot "$FS" 'roundAsked >= roundSiteCount' "判据② 不得再用恒真的 roundAsked 口径"
+must    "$FS" 'val askedAll = !roundEndedByTimeout && roundDone >= roundSiteCount && roundSiteCount > 0' "判据② 必须是「实际回调数＝计划数 且 不是超时收尾」"
+must    "$FS" 'private var roundEndedByTimeout = false' "超时收尾必须留下痕迹（它等价于「至少一个站点没回调」）"
+must    "$FS" 'roundEndedByTimeout = true' "超时收尾时必须置位"
+must    "$FS" '搜索停滞：' "0 结果的搜索必须有停滞检测（否则白等满 30 秒）"
+must    "$FS" 'STALL_QUIET_MS' "停滞阈值必须是有名常量"
+must    "$FS" 'else if \(allRunCount\.get\(\) > 0 && quiet >= STALL_QUIET_MS\)' "0 结果一档仍走 10 秒停滞阈值（bv 口径未动）"
+must    "$FS" '部分站点未响应，未找到结果，请稍后重试' "「没问全」必须给独立结论，不得用「暂无数据」冒充"
+must    "$FS" '个站点未响应（已回 ' "「没问全」收尾必须留埋点（能看出已回几个）"
+must    "$SV" 'EventBus\.getDefault\(\)\.post\(new RefreshEvent\(RefreshEvent\.TYPE_SEARCH_RESULT, null\)\)' "getSearch 的两个出口必须走 EventBus（唯一被订阅的通道）"
+count   "$SV" 'EventBus\.getDefault\(\)\.post\(new RefreshEvent\(RefreshEvent\.TYPE_SEARCH_RESULT, null\)\);' 7 "空结果回调必须全部走 EventBus（bv 补了「源里查不到该 key」与「类型不在 0/1/3/4」两处——它们原来只投无人订阅的 LiveData，站点永不回调就漏一格计数）"
+must    "$RS" 'private byte\[\] rewriteM3u8\(' "转发端点必须能重写 m3u8 清单"
+must    "$RS" 'm3u8 分片已重写' "重写必须留埋点"
+must    "$RS" 'URI=\\"' "EXT-X-KEY/MAP 里嵌的 URI 也要重写（否则加密流照样死）"
+must    "$RS" 'if \(code == 200 && cr == null && len >= 0 && len <= M3U8_MAX_BYTES && isM3u8\(mime, u\)\)' "只有 200 全量清单才重写（206 带 Range 语义，改了字节账对不上）"
+must    "$RS" 'String prefix = "http://" \+ host \+ "/l1play' "重写目标必须用请求的 Host 拼端点（本机与投屏自动各得其所）"
+must    "$RS" 'low.contains\("/l1play"\)' "已指向本机转发的不许再包一层（防自嵌套）"
+mustnot "$RS" 'probe.addHeader\("Accept-Ranges", \(ar == null \|\| ar.isEmpty\(\)\) \? "bytes" : ar\);' "不得再硬写 Accept-Ranges: bytes（上游不支持 Range 时那是谎报可拖动）"
+mustnot "$RS" 'resp.addHeader\("Accept-Ranges", \(ar == null \|\| ar.isEmpty\(\)\) \? "bytes" : ar\);' "同上（GET 分支）"
+must    "$RS" 'String reqU = session.getParms\(\)\.get\("u"\);' "投屏分片要能复用同一个码（带自己的 u）"
+must    "$FSA" 'DefaultConfig\.checkReplaceProxy\(item\.pic\.trim\(\)\)' "搜索页图片必须与首页同口径（trim + checkReplaceProxy）"
+mustnot "$FSA" '"position=" \+ helper\.getLayoutPosition\(\)' "图片 transform 的 key 不得再混位置（列表合批刷新会让缓存全失效）"
+must    "$OG" 'L1Executors\.fixed\("l1box-img", 8\)' "图片任务必须走独立线程池（不得与 OkGo 全局网络回调共抢 l1box-net）"
+mustnot "$OG" 'executor\(HeavyTaskUtil\.getBigTaskExecutorService\(\)\)' "Picasso 不得再占用 OkGo 的全局回调池"
+
+echo "===== AK. 2026-09-24 bw：有结果的搜索必须早收尾 + 复制链接必须给原链接 + 手势回调不得崩 ====="
+TL=TabLayout/src/main/java/com/angcyo/tablayout/DslTabLayout.kt
+# 症状①（bv 真机 8/8 轮）：有结果的搜索**必然**等满 30 秒看门狗 —— 最刺眼的一轮首条结果 75ms 就上屏，
+#   转圈却挂满 30 秒。两个出口都进不去：正常收尾要 allRunCount==0（恒定有 1 站不回），停滞检测被判据
+#   结果为空 挡着（当初刻意"有结果就不打扰"）。
+# 症状②（用户提）：下载按钮的「复制链接」要的是原链接（不能是本机转发端点）。
+# 症状③（bv 真机 1 次）：搜索页左侧站点栏 / 首页分类栏滑动时闪退，堆栈落在 DslTabLayout 的手势回调上。
+# 回退后果：有结果的搜索也要白等 30 秒转圈；滑动列表随机闪退。
+must    "$FS" 'private const val SETTLE_QUIET_MS = 3000L' "有结果的搜索必须有独立的「结果稳定」阈值（否则只能等满 30 秒看门狗）"
+must    "$FS" 'quiet >= SETTLE_QUIET_MS' "有结果时必须按静默阈值收尾"
+must    "$FS" 'onFirstWaveDone\(settled = true\)' "有结果时必须走正常收尾（超时收尾会 shutdownNow 掐死在途搜索、丢迟到结果）"
+must    "$FS" 'val hasResult = searchAdapter\.data\.size > 0 \|\| searchAdapterFilter\.data\.size > 0' "有无结果必须两个适配器都看（过滤模式下数据在 filter 里）"
+must    "$FS" '搜索稳定：' "结果稳定收尾必须留埋点（判修法生效的直接证据）"
+must    "$FS" '结果稳定收尾' "收尾摘要要能区分「所有站点都答了」与「静默稳定」"
+mustnot "$FS" 'searchAdapter\.data\.size <= 0 && quiet >= STALL_QUIET_MS' "两档阈值不得再混写成一条判据"
+must    "$PH" 'public static String unwrapForward\(String url\)' "复制链接必须有一层兜底解包（转发端点要能还原成原地址）"
+must    "$PH" 'URLDecoder\.decode\(kv\.substring\(eq \+ 1\), "UTF-8"\)' "解包必须真的解码 u 参数（不是原样搬）"
+must    "$DA" 'url = PlayerHelper\.unwrapForward\(url\);' "下载按钮取到地址后必须过一遍解包"
+count   "$TL" 'e1: MotionEvent\?' 2 "手势回调的两个起点参数都必须可空（框架在 ACTION_CANCEL 后会传 null，真机崩过）"
+count   "$TL" 'e2: MotionEvent\?' 2 "同上（第二个参数）"
+mustnot "$TL" 'e1: MotionEvent,' "手势回调不得再声明非空起点参数"
+
+echo "===== AL. 2026-09-28 bx：滑动丝滑化 + 图片失败可辨/有账本 + 选集自适应 + 播放错误码透传 ====="
+FSA=app/src/main/java/com/github/tvbox/osc/ui/adapter/FastSearchAdapter.java
+MDL=app/src/main/java/com/github/tvbox/osc/picasso/MyOkhttpDownLoader.java
+DEXML=app/src/main/res/layout/activity_detail.xml
+PEC=player/src/main/java/xyz/doikki/videoplayer/player/PlayErrCode.java
+EMP=player/src/main/java/xyz/doikki/videoplayer/exo/ExoMediaPlayer.java
+IJP=player/src/main/java/xyz/doikki/videoplayer/ijk/IjkPlayer.java
+# F 组（滑动）：by 真机实测证明"滑动中暂停落地＋暂停图片"会造成**右侧断触＋图片大面积变慢**，
+# by2 改为**限流不暂停**：滑动中照常落地、每批最多 12 条（单帧负载恒定），图片不再被暂停。
+# 回退后果：要么"滑着滑着突然不跟手"，要么图片请求被反复挂起重排队 → 大面积变慢。
+must    "$FS" 'private const val SCROLL_BATCH_MAX = 12' "滑动中落地必须限流（不是暂停）"
+must    "$FS" 'val take = if \(scrollPauseActive\) minOf\(SCROLL_BATCH_MAX, pendingResults\.size\)' "落地必须按滑动状态限批"
+must    "$FS" 'if \(pendingResults\.isNotEmpty\(\)\) scheduleFlush\(\)' "限掉的批次必须排下一拍（否则丢结果）"
+must    "$FS" 'if \(pendingResults\.isNotEmpty\(\) && !flushScheduled\) scheduleFlush\(\)' "停稳必须立刻把剩余批次落完"
+mustnot "$FS" 'pauseTag' "不得再暂停图片加载（实测会让图片大面积变慢）"
+mustnot "$FS" 'resumeTag' "同上"
+mustnot "$FS" 'SCROLL_PAUSE_MAX_ITEMS' "旧的「攒批不落地」策略已按实测撤除"
+must    "$FS" 'setItemViewCacheSize\(6\)' "列表缓存必须加厚（默认 2，来回滑重绑定太多；ck 起恢复固定 6）"
+# G 组（图片）：用户口径 —— 失败仍用原来的灰图；"图为什么没出来"由收尾那行账本回答
+# （by 实测：DNS 正常（DoH 命中 71/失败 2），失败以图站反爬为主）。
+must    "$FSA" 'error\(R\.drawable\.img_loading_placeholder\)' "失败必须仍是原来的灰图（用户 09-28 口径）"
+mustnot "$FSA" 'img_load_failed' "红叹号失败图已按用户口径撤除"
+mustnot "$FSA" '\.tag\(IMG_TAG\)' "图片不得再打滑动暂停用的 tag"
+must    "$MDL" 'imgStatsReset\(\)' "图片账本必须能清零（一轮搜索一份账）"
+must    "$MDL" '成功率=' "账本必须给成功率（用户要的就是加载成功率）"
+must    "$MDL" 'UnknownHostException' "必须单独统计未知主机（＝DNS 解析失败/被拦截，用户的怀疑点）"
+must    "$MDL" 'SocketTimeoutException' "超时必须单独统计（连接/读取）"
+must    "$MDL" 'countFail\(counted\.url\(\)\.host\(\), reasonOf\(e\)\)' "网络异常必须按 host＋原因记账"
+must    "$MDL" 'countFail\(counted\.url\(\)\.host\(\), "HTTP" \+ response\.code\(\)\)' "非 2xx 必须按 HTTP 状态码记账（418/403 等反爬）"
+must    "$MDL" 'IMG_HOST_REASON' "失败域名必须带原因（哪个域名是被拦的一眼可见）"
+must    "$FS" 'MyOkhttpDownLoader\.imgStatsReset\(\)' "一轮搜索开始必须清账"
+must    "$FS" '图片加载：' "收尾必须打图片统计行"
+# H 组（选集）：用户口径 —— 恢复原设计（固定高度＋网格内部滚动），行数 4→6 行（190dp）。
+must    "$DEXML" 'android:layout_height="190dp"' "选集网格高度＝约 6 行（用户 09-28 口径）"
+mustnot "$DEXML" 'android:nestedScrollingEnabled="false"' "不得再关网格内部滚动（那会让整页跟着滚、详情页被上推）"
+# 左栏（2026-09-28 三轮实测收敛）：tab 语义＝**只代表"有结果的站点"**（用户明确否掉"点搜索
+# 就把 40 个站点全列出来"）；视图改动走"停手窗口"队列 ⇒ 拖动期间不会中途换子 View。
+must    "$FS" 'SITE_TAB_SETTLE_MS' "左栏视图改动必须有「停手窗口」常量"
+must    "$FS" 'setOnScrollChangeListener' "必须记录左栏最后一次滚动时刻（判定是否在拖）"
+must    "$FS" 'private fun queueSiteTab\(' "站点 tab 必须走队列（不得随手 addView）"
+mustnot "$FS" 'queueSiteTabsRebuild' "不得再预建全部站点 tab（语义错＋点无结果站点会崩）"
+must    "$FS" 'private fun flushSiteTabsNow\(' "队列必须有停手后的统一落地"
+must    "$FS" 'override fun dispatchTouchEvent\(ev: MotionEvent\)' "必须旁观左栏触摸流（只看滚动会漏掉「手指刚落下」那一瞬）"
+must    "$FS" 'siteTabsTouchDown' "必须有「手指在左栏上」的状态（否则起手瞬间仍会被改视图掐断）"
+must    "$FS" 'if \(siteTabsBusy\(\)\)' "落地前必须再确认已停手（又动了就继续顺延）"
+# 崩溃修复（2026-09-28 真机 FATAL ×3）：filterResult 里 `(resultVods[key])!!` 在"该站点还没有
+# 结果桶"时直接 NPE（老防线只挡住"名字不在站点表里"）。回退后果：点左栏某个暂无结果的站点必闪退。
+mustnot "$FS" 'val list: List<Movie\.Video> = \(resultVods\[key\]\)!!' "过滤桶不得再用 !! 强解（无结果的站点会崩）"
+must    "$FS" 'val list: List<Movie.Video>\? = resultVods\[key\]' "过滤桶必须按可空取用"
+
+echo "===== AM. 2026-09-28 cb：图片吞吐/成功率 + 双侧跟手（P1） ====="
+IMFL=app/src/main/java/com/github/tvbox/osc/util/L1ImageInflight.java
+# 图片慢的真因（ca 实测）：命中 250+ 条结果但只有 5~24 张图下载完 —— 4 路并发 + 不可取消 +
+# 10 秒超时 + 队列被"滑走的图"占满。AM 节把这些逐条钉住。
+must    "$OG" 'L1Executors\.fixed\("l1box-img", 8\)' "图片下载并发必须为 8（原 4 路是吞吐下限）；ck 起恢复固定值"
+mustnot "$OG" 'L1Executors\.fixed\("l1box-img", 4\)' "不得回退到 4 路并发（低档取值必须经 DeviceProfile，不得写死）"
+must    "$OG" 'okhttp3\.Dispatcher imgDispatcher' "图片必须有独立 Dispatcher（不与接口请求共用）"
+must    "$OG" 'IMAGE_CONNECT_TIMEOUT_MS' "图片必须有独立（更短）的连接超时"
+must    "$OG" 'connectionPool\(new okhttp3\.ConnectionPool' "图片必须有独立连接池"
+mustnot "$MDL" 'L1ImageDemand\.needed' "不得再按「可见窗口」跳过请求（误判会让整页图不加载）"
+must    "$MDL" 'L1ImageInflight\.put\(url, call\)' "在途请求必须登记（供停稳/切站点时取消越界的下载）"
+must    "$MDL" 'BROWSER_UA' "图片 UA 必须换成浏览器 UA（Dalvik UA 被豆瓣图床 418）"
+must    "$MDL" 'refererFor\(' "必须按域名补 Referer（只图片链）"
+must    "$IMFL" 'public static int cancelOutside' "必须能取消「已滚出可见范围」的在途下载"
+must    "$IMFL" 'INFLIGHT\.put\(n, call\)' "在途表必须真的登记 Call（否则取消无从谈起）"
+must    "$IMFL" '\.cancel\(\)' "越界的在途下载必须真的被 cancel（只统计不取消＝没修）"
+must    "$IMFL" 'public static String summary' "必须留「取出/取消/在途」账本（纯日志）"
+mustnot "$FSA" 'interface ImageWindowGate' "adapter 不得再有「可见门闸」（用户口径：不判错）"
+mustnot "$FSA" 'shouldLoadImage' "不得再按可见性决定是否请求图片"
+mustnot "$FS" 'setImageWindowGate' "宿主不得再给 adapter 设可见门闸"
+must    "$FS" 'private fun cancelOutOfWindowImages\(' "停稳/切站点必须取消越界的在途下载"
+mustnot "$FS" 'notifyItemRangeChanged\(r\.first' "不得再对可见区间强制重绑（那是为门闸兜底的补丁，会加重卡顿）"
+must    "$FS" 'itemAnimator = null' "必须关掉 item 插入动画（手指下位移＝不跟手）"
+must    "$FS" 'built < SITE_TAB_BATCH' "站点 chip 必须分帧创建（cc 实测一次性建 40 个＝364ms 卡顿；ck 起恢复 const 8）"
+must    "$FS" 'private const val SITE_TAB_BATCH = 8' "chip 每帧批次固定 8（cc 实测一次性建 40 个会卡 364ms）"
+must    "$FS" 'private fun drainSiteTabQueue' "chip 队列必须逐帧落地（不得一次性建完）"
+must    "$FS" 'private fun auditVisibleImages' "停稳后必须做「可见图片体检」（被取消/被丢弃的图需要第二次机会）"
+must    "$FS" 'IMG_AUDIT_DELAY_MS' "体检必须延迟（给正在下载的图落地时间，避免误判反复重绑）"
+must    "$FS" 'lastVisibleImageAudit' "体检结论必须打进日志（可见区真实落地率）"
+must    "$FS" '滑动中不取消任何下载' "取消越界下载只允许在停稳时做（滑动中取消会误伤即将可见的图）"
+must    "$FSA" 'public static final String IMG_OK' "图片必须记「已成功」状态（体检与统计的唯一可靠口径）"
+must    "$FSA" 'public static String imageCounterSummary' "必须统计「绑定发起/预取/空地址」，用于判断取出少是缓存还是没请求"
+must    "$FSA" 'countPrefetchStart' "预取必须记账（否则分不清「图没出」是没请求还是失败）"
+must    "$FS" 'prefetchAroundVisible' "必须有「可见±6 预取」（用户 09-28 口径）"
+must    "$FS" 'IMG_PREFETCH_BUDGET' "预取必须有总额度（否则来回滑会把整轮 500+ 张全预热＝失去可见优先）"
+must    "$FS" 'Picasso\.get\(\)\.load\(u\)\.fetch\(\)' "预取必须走 fetch()（只取字节进缓存，不绑视图、不改状态）"
+must    "$FS" 'prefetchedUrls\.add\(u\)' "同一轮同一地址只能预取一次"
+must    "$FS" 'System\.out\.println\(lastVisibleImageAudit\)' "体检结论必须当场打印（原来只挂收尾 ⇒ 每轮都打到「未体检」）"
+must    "$MDL" 'if \(!call\.isCanceled\(\)\)' "我们自己取消的请求不得计入失败（cc 实测：取消数≈SocketException 数）"
+must    "$FS" 'Choreographer\.getInstance\(\)\.postFrameCallback' "必须有应用内帧耗时统计（系统只报 >30 帧，微卡看不见）"
+must    "$FS" '图片队列：' "收尾必须打图片队列账（取出/跳过/窗口）"
+must    "$FS" '帧耗时\[' "收尾必须打帧耗时（丝滑的量化指标）"
+must    "$FS" 'L1ImageInflight\.reset\(\)' "一轮搜索开始必须复位在途表与计数"
+must    "$FS" 'startFrameWatch\(\)' "帧耗时统计必须启动"
+must    "$FS" 'frameWorstStage' "最差帧必须带「当时阶段」（否则定位不了卡在哪一步）"
+# ch（2026-09-29）：原断言 must '分段耗时：' 已撤 —— cg 轮查明该埋点测的东西本来就 <25ms，
+# 覆盖范围已被帧埋点包含，故整体撤除（见文末 ch 段的 mustnot）。
+mustnot "$PF" 'private static boolean isPlayableUrl' "不得再对播放地址做预判门闸（用户 09-28 口径：不判错、防止误判）"
+# I 组一期（播放失败）：错误码此前被全工程丢弃，"很多源直接失败"无法分类；
+# I2 同址同类去重＝整条兜底链不被空转重走。判死秒数一字未动。
+must    "$PEC" 'public static String take\(\)' "错误码通道必须取走即清（一次错误只归因一次）"
+must    "$PEC" 'public static String classify' "错误码必须能粗归因（网络/HTTP、解码）"
+must    "$EMP" 'PlayErrCode\.set\("Exo:' "Exo 内核必须透传错误码"
+must    "$EMP" 'PlayErrCode\.set\(""\)' "Exo 重试路径必须销旧账（防串染）"
+must    "$IJP" 'PlayErrCode\.set\("Ijk:' "Ijk 内核必须透传 what/extra"
+count   "$IJP" 'PlayErrCode\.set\("exc:' 2 "setDataSource/prepareAsync 抛异常也要留痕"
+must    "$PF" 'PlayErrCode\.take\(\)' "兜底链入口必须取走内核错误码"
+must    "$PF" '播放失败：code=' "归因必须留埋点（二期定刀的数据源）"
+count   "$PF" 'mLastErrClass = null' 5 "同址同类签名的复位点必须齐全（声明/换解析/重播/手动重试/换集）"
+must    "$PF" 'chainAlreadyTried' "同址同类错误必须走整链去重（跳过变形/降级直达重取）"
+must    "$PF" '同址同类兜底试尽' "去重后的出口必须留埋点"
+
+# ===== ce（2026-09-28）：/proxy 自转发兜底 + 按 do 路由 + 净化真归因 + 分段计时修正 =====
+# A 类（站点下发本地代理地址）在 cd 轮露出第二层：门禁已放行，但 **jar 的 Proxy 直接返回 null**
+# （同 jar 对 do=ck 能回 200 ⇒ jar 正常，只是派发表没有这个 key）—— 我们只能回 503。
+# 而那条 URL 是自描述的（url=b64 上游、ck=b64 凭据）⇒ jar 不接单时自己转发。
+must    "$JL" 'siteJarKeys\.put\(key, jarKey\)' "/proxy 路由必须记下「站点key→jarKey」（不然只能靠 recentJarKey猜）"
+must    "$JL" 'siteJarKeys\.get\(doKey\)' "/proxy 必须按请求里的 do 找 jar（do 才是真正该处理它的站点 key）；cg 后改为「学到的表优先、站点 key 表兜底」，故只断言兜底那一段仍在"
+must    "$JL" '\? mapped : recentJarKey' "按 do 找不到时必须回退 recentJarKey（行为与改动前一致）"
+must    "$JL" '路由=' "诊断日志必须打出路由来源（do 映射 / recent 回退）"must    "$RS" 'private Response proxySelfForward' "jar 返回 null 时必须能自转发（否则 A 类 100% 失败）"
+must    "$RS" 'proxySelfForward\(session, params, local\)' "自转发必须挂在「/proxy 无可用响应」这条分支上（jar 正常时一行不碰）"
+must    "$RS" 'if \(!local && !castOk\)' "自转发的门禁必须与 /l1play 一致（否则成了局域网开放代理）"
+must    "$RS" 'private Response serveForward' "转发本体必须抽出复用（range/HEAD/m3u8 重写只有一份）"
+must    "$RS" '本地代理：自转发 url=' "自转发必须有日志（下一轮据此判成败）"
+must    "$RS" 'Cookie: " \+ ck' "ck 按查询串失败后必须再试一次 Cookie 头（两种约定都存在）"
+mustnot "$RS" 'parseForwardHeaders\(session\.getParms\(\)\.get\("h"\)\)' "转发本体不得再自己读 session 的 h（必须用入参，两条链路共用）"
+# 净化失败的真归因：dd 轮埋点被 OkGo 坑了（HttpException 的 rawResponse 已置空 ⇒ code 读回 0）
+must    "$PF" 'response\.getRawResponse\(\)' "净化失败必须从原始响应取真实状态码（OkGo 的 HttpException.code() 读回 0）"
+must    "$PF" 'briefMsg' "净化失败必须带异常原文（类名之外的最后一句人话）"
+# 分段计时（原 cd/ce/cf 版 → ch 已整体撤除，见文末 ch 段）。
+# 留档原因：它连续 4 轮 0 条，最终查明不是埋点坏，而是**插入成本本来就 < 25ms 阈值**
+# （flushSearchResults 每 120ms 一拍、每拍只落增量一小批）⇒ 它在如实报告"不慢"。
+# 覆盖范围已被帧埋点包含，故连常量一起撤。上面两条 must 已随之删除。
+
+# ===== cf（2026-09-29）：手绑放行判据去快照化 + 路由埋点判据修正 =====
+# ce 轮实测（_ce_dump.txt）：初版 proxyCapable 也比「代理世代号」，而世代号每次 occupyProxy 都 +1、
+# 与「这个 jar 还能不能用当前代理」无关（家族 jar 有 4 个，必然互相顶）。
+# 实证：14942a7863 手绑于 gen1 → 两次接管后 gen=3 ⇒ 判死，站点 WexAiYueYue 100% 503；
+# 对照组 0b9565d6a6 恰在两次接管之后手绑 ⇒ 放行、do=ck 返回 200。
+mustnot "$PI" 'hb\.gen' "手绑放行判据不得再比代理世代号（无关接管会把该继续成立的绑定误判为失效）"
+must    "$PI" 'if \(!hb\.holderKey\.isEmpty\(\) && !hb\.holderKey\.equals\(PROXY_HOLDER_KEY\)\) return false;' "手绑放行只比「绑定时那一任持有者」（换届必换 key，这才是代理是否被换掉的真实凭据）"
+must    "$PI" 'PROXY_HOLDER_KEY\.isEmpty\(\)\) return false;' "绑定时无持有者必须有明确分支，不能落进「key 不等」的误杀"
+must    "$PI" 'final String holderKey;' "手绑账本必须记 holderKey（诊断要能说清「绑定时是谁」）"
+must    "$PI" 'static String handBoundBrief' "必须能打出「这个 key 在手绑账本里是什么状态」（原先把三种拒因合成一句话，看不出是没登记还是判据没过）"
+must    "$JL" '手绑账本=' "/proxy 日志必须打出账本状态（否则下一次还是只能回去读代码猜）"
+mustnot "$JL" 'route = \(key != null && key\.equals\(recentJarKey\)\)' "路由埋点判据不得再用 key.equals(recentJarKey)（取链前刚 getSpider 过 ⇒ 天然相等 ⇒ 恒打 recent）"
+must    "$JL" 'boolean hitLearned = learned != null && !learned\.isEmpty\(\);' "路由来源必须由 mapped 是否命中直接决定（可用已知答案的样本验证取值）"
+must    "$JL" 'do\(学到\)' "路由日志必须能区分「学到的 do」与「回退 recent」（cg 改为三态，取代原来的两态断言）"
+must    "$JL" '拒:该jar从未手绑成功' "拒绝措辞必须区分「从未手绑」与「手绑后已换届」"
+must    "$JL" '拒:手绑后已换届' "同上（另一种拒因）"
+
+# ===== cg（2026-09-29）：do→jar 学到的路由表 + 分段计时收口 =====
+# cf 轮实测（_cf_dump.txt）：/proxy 的 do 是 jar 自造的短标识（实测只有 hmys / ck），
+# 而 siteJarKeys 存的是 sourceBean.getKey()（配置站点 key，如 海绵/WexAiReBo）——
+# 两者是不同命名空间 ⇒ 13 次 do 全部 miss，恒回退 recentJarKey 碰运气
+# （同一个 do=ck 被路由到两个不同 jar：0b9565d6a6 / ae48218142）。
+must    "$JL" 'private final ConcurrentHashMap<String, String> doJarKeys' "必须新增 do→jar 路由表（do 与站点 key 不同命名空间，旧表查不中）"
+must    "$JL" 'String learned = doKey\.isEmpty\(\) \? null : doJarKeys\.get\(doKey\);' "路由必须先查「学到的 do 表」"
+must    "$JL" 'hitLearned \? learned : siteJarKeys\.get\(doKey\)' "学到的表优先、站点 key 表兜底，顺序不可颠倒"
+must    "$JL" 'doJarKeys\.put\(doKey, key\);' "成功放行后必须把 do→jar 记下来（这是唯一能知道该 do 归谁的途径）"
+must    "$JL" 'rs\[0\] != null' "只登记「真的处理出东西」的成功样本（返回 null 的不得固化，否则错路由被锁死）"
+must    "$JL" '表规模=do表' "/proxy 日志必须打出两张表的规模（否则看不出路由表到底有没有被填起来）"
+must    "$JL" 'do\(学到\)' "路由来源必须能区分「学到的」与「站点key命中」"
+mustnot "$JL" 'route = \(routeDo == null\)' "路由日志不得再有按 key 猜的旧分支"
+
+# ===== ch（2026-09-29）：三项收口（撤分段计时 / 修 frameStage 语义 / 修路由日志自证） =====
+#
+# ① 撤掉「分段耗时」埋点：cg 轮查明它不是埋点坏，而是**插入成本本来就 < 25ms 阈值**
+#    （flushSearchResults 每 120ms 一拍、每拍只落增量一小批）⇒ 它在如实报告"不慢"，
+#    覆盖范围已被帧埋点包含，没有继续存在的价值。**连常量一起撤，别留死代码。**
+mustnot "$FS" 'SEG_WARN_MS' "分段耗时埋点必须整体撤除（cg 已证插入本就 <25ms，该埋点无价值）"
+mustnot "$FS" 'pendingSegTag' "分段耗时的待结算字段必须撤除"
+mustnot "$FS" 'private fun settlePendingSeg' "分段耗时的主动结算入口必须撤除"
+mustnot "$FS" 'segLog\(' "分段耗时的打印函数必须撤除"
+mustnot "$FS" '分段耗时：' "不得再输出分段耗时日志（已被帧埋点覆盖）"
+#
+# ② 修 frameStage 语义坑：cd/ce/cf/cg 四轮最差帧都标「结果落地」（240~314ms），
+#    真凶是加固 jar 首次构造 WebView（313.51ms，与 WebViewFactory: Loading 同刻）。
+#    根因＝frameStage 只在 stage() 被调用时更新、之后一直残留 ⇒ 标签必须能说清"谁在跑"。
+must    "$FS" 'stage\("站点在跑"\)' "搜索任务提交前必须标记「站点在跑」（jar 首次构造 WebView 的状态，否则被误记成结果落地）"
+must    "$FS" 'stage\("结果落地\(插入\)"\)' "结果落地的标签必须写明是「插入」，与站点初始化区分开"
+must    "$FS" 'frameStage 只在 stage\(\) 被调用时更新' "frameStage 会残留这一坑必须写在注释里（否则后人继续误读最差帧标签）"
+must    "$FS" 'WebViewFactory' "必须点明四轮 314ms 的真凶是 WebView 首次初始化（证据要留在代码上）"
+#
+# ③ 修路由日志的自证效应：cg 轮 `表规模=do表1` 是"含本条之后"的数 ——
+#    成功路径上 doJarKeys.put 就在 proxyLog 之前 ⇒ 在 proxyLog 里查 containsKey 恒为真。
+#    ⇒ 路由来源必须在 **put 之前**定死再传下去。
+must    "$JL" 'String routeSrc = hitLearned \? "do\(学到\)"' "路由来源必须在 put 之前定死（否则 proxyLog 里查表恒真，日志自证）"
+must    "$JL" 'put 早于 proxyLog' "自证效应必须写进注释（否则后人会把表规模当成路由命中证据）"
+must    "$JL" 'String routeSrc\)' "日志参数必须是「已定死的来源串」，不能再是 Boolean 让日志自己去猜"
+mustnot "$JL" 'doJarKeys\.containsKey\(String\.valueOf\(params' "proxyLog 里不得再现场查 doJarKeys（自证效应，cg 轮踩过）"
+must    "$JL" '新学到' "首次学到某个 do 时必须标出来（区分「本次学到」与「本次命中已有」）"
+
+# ① 手绑世代账本：cf 轮实测条件不成立（配置里无 WexAiYueYue、整轮 1 次手绑 0 次接管），
+# 改由**静态推理收口**判定为已修复，结论必须固化在注释里，否则后人无从复核。
+must    "$PI" '静态推理收口' "手绑世代账本的收口结论必须固化在注释里（不再实测，论证要留在代码上）"
+must    "$PI" '触发条件本身被移除' "必须说清「原 bug 的触发条件已不存在」这一核心论据"
+must    "$PI" '删除式修复' "必须点明这是删除式修复、非参数调优（区别在于前者无需实测覆盖）"
+
+echo "===== （末尾）ck：撤销低配机档位收敛（2026-09-30 · 用户口径「低档还是去掉吧，保持 8 线程」） ====="
+# 背景：cj 引入的 7 个档位方法（图片线程 / 图片 Dispatcher / 连接池 / 磁盘缓存 / 列表复用池 / chip 批量）已撤销，
+# 恢复改造前的**固定值**。撤销理由：
+#   ① 中/高档取值本就与改造前逐字相同 ⇒ 对绝大多数设备零收益；
+#   ② 它引入一条隐藏路径：App.onTrimMemory/onLowMemory → markMemoryPressure() → tier **永久**降低档，
+#      于是**任何机器**一旦内存紧张，siteTabBatch 就从 8 掉到 4（chip 建得更慢）——
+#      本意是「低配机兜底」，实际变成「可能影响所有设备」。撤销即消灭该路径。
+# 固定值原样恢复：线程 8 / Dispatcher 12+6 / 连接池 8 / 磁盘缓存 64MB / itemViewCache 6 / chip 批量 8。
+must    "$OG" 'imgDispatcher\.setMaxRequests\(12\)' "图片并发恢复固定 12"
+must    "$OG" 'imgDispatcher\.setMaxRequestsPerHost\(6\)' "单图床并发恢复固定 6"
+must    "$OG" 'new okhttp3\.ConnectionPool\(8,' "图片连接池恢复固定 8"
+must    "$OG" '"img_cache"\), 64 \* 1024 \* 1024' "图片磁盘缓存恢复固定 64MB"
+must    "$OG" 'L1Executors\.fixed\("l1box-img", 8\)' "图片线程池恢复固定 8"
+must    "$FS" 'setItemViewCacheSize\(6\)' "列表复用池恢复固定 6"
+must    "$FS" 'private const val SITE_TAB_BATCH = 8' "chip 每帧批次恢复固定 8（且必须是 const，不再走方法）"
+# 反向：这 7 个档位方法不得复活（复活＝把「降档」这条隐藏路径又装回来）
+mustnot "$DP" 'imageThreads' "不得再出现图片并行度档位方法"
+mustnot "$DP" 'imageMaxRequests' "不得再出现图片并发档位方法"
+mustnot "$DP" 'imageConnectionPool' "不得再出现连接池档位方法"
+mustnot "$DP" 'imageCacheBytes' "不得再出现磁盘缓存档位方法"
+mustnot "$DP" 'itemViewCacheSize' "不得再出现列表复用池档位方法"
+mustnot "$DP" 'siteTabBatch' "不得再出现 chip 批次档位方法"
+mustnot "$OG" 'DeviceProfile\.' "OkGoHelper 不得再引用 DeviceProfile（图片链路已全固定值）"
+# 改造前就有的档位方法必须保留（撤销范围要精确，不得误伤）
+must    "$DP" 'public static int searchConcurrency\(\)' "搜索并发档位必须保留（ak 定稿，与本次撤销无关）"
+must    "$DP" 'public static int detailConcurrency\(\)' "详情并发档位必须保留"
+must    "$DP" 'public static int timeoutRunnerMax\(\)' "超时隔离线程上限必须保留"
+must    "$DP" 'public static int spiderShards\(\)' "spider 分片档位必须保留"
+# ck 临时埋点（验证完整体撤除，届时本段一并删除）
+mustnot "$FS" 'L1_TRACE = true' "cu 收尾：埋点总开关必须**已关闭**（字符串会被编译期消除）"
+must    "$FS" 'private const val L1_TRACE = false' "cu 收尾：开关必须为 false（const+inline ⇒ 观测代码编译期彻底消除）"
+must    "$FS" '左栏插入：' "必须埋左栏插入点（含前后 scrollY，用于判「插入时是否真静止」）"
+must    "$FS" '停稳收尾：' "必须埋右栏停稳三件活的逐项耗时"
+must    "$FS" 'frameWorstState' "最差帧必须记下「当时两侧在不在动」"
+# 未 init 必须仍为中档（与改造前完全一致）—— 这是整个分档机制的安全前提
+must    "$DP" 'private static volatile int tier = TIER_MID' "未 init 时必须仍是中档（保证分档机制自身不出错时行为不变）"
+
+echo "===== （末尾）cl：左右一起修（2026-09-30 · fling 边界/中止 + 放开追加守卫 + 关掉居中） ====="
+# 全部有 ck 三轮真机数据支撑：
+#  ① fling 上界原用 maxHeight（内容总高），比真正可滚范围 maxScrollY 多算**一整个视高**
+#     ⇒ 视觉到底后仍继续空转；
+#  ② computeScroll 的越界中止只查 currX，而竖向 fling 的 currX 恒为 0
+#     ⇒ **竖向 fling 永不提前中止**（实测单段 4668ms / 8348ms，正常仅 1~2 秒）；
+#  ①②叠加 ⇒ 空转期间插入新 chip 使 maxScrollY 变大时，scrollTo 会把 scrollY **"吸"到新底部**
+#     （实测「前Y=517 → 后Y=1511」，而 1511 恰为新上限）—— 这就是用户报的"卡住不跟手"。
+#  ③ "追加"在滑动中被守卫挡住 ⇒ 实测用户滑 8.4 秒期间 chip **零更新**、停手后才一次性冒出（批量=8）
+#     —— 即用户报的"一滑动就停止出结果"。而 addView 是**追加到末尾**、不移除也不移动已有子 View
+#     ⇒ 滑动中安全；真正会打断手势的 removeAllViews()（清空重建）单独守住。
+#  ④ 右栏关掉 tv_selectedItemIsCentered（反编译证实它只走焦点路径，防"停下又顿一下"）。
+TL="TabLayout/src/main/java/com/angcyo/tablayout/DslTabLayout.kt"
+LS="app/src/main/res/layout/activity_fast_search.xml"
+must    "$TL" 'startFling\(-velocity\.toInt\(\), 0, maxScrollY\)' "左栏 fling 上界必须用 maxScrollY（原 maxHeight 多算一整个视高）"
+mustnot "$TL" 'startFling\(-velocity\.toInt\(\), 0, maxHeight\)' "fling 上界不得再用 maxHeight"
+must    "$TL" '_overScroller\.currY < minScrollY \|\| _overScroller\.currY > maxScrollY' "竖向越界必须判 currY（原只查 currX ⇒ 竖向永不中止）"
+must    "$TL" 'isHorizontal\(\)\) \{' "越界判定必须按横竖分支"
+must    "$FS" '去掉了 siteTabsBusy\(\) 检查' "drainSiteTabQueue 必须去掉 busy 守卫（追加在滑动中安全）"
+must    "$FS" '只保留给' "flushSiteTabsNow 的守卫只保留给清空重建"
+must    "$LS" 'tv_selectedItemIsCentered="false"' "右栏 mGridView 必须关掉选中项居中"
+must    "$LS" 'tv_selectedItemIsCentered="true"' "mGridViewFilter 必须保持 true 作对照"
+
+echo "===== （末尾）cm：触摸/滚动取证埋点（2026-09-30 · **只观测，不改行为**） ====="
+# 为什么需要：用户主诉是"左栏断触"，而 ck/cl 的埋点全在测"插入了什么"，
+# **从没看过手势本身** —— 这就是上一轮定不了主因的根本原因。
+# 用户已确认**断触发生在同一轮搜索内** ⇒ 排除"清空重建(removeAllViews)"（那只在重搜时发生），
+# 矛头指向 `needScroll` 从 false→true 的一次性翻转：翻转前后 onTouchEvent 处理路径整体切换
+# （super ↔ _gestureDetector），且接管瞬间 ViewGroup 会给子 View 发 ACTION_CANCEL。
+# 右栏则要判断"惯性滑行是否均匀"（帧耗时正常却体感顿挫 ⇒ 问题在位移连续性，不在渲染）。
+must    "$FS" '★CANCEL' "必须记录 ACTION_CANCEL —— 断触的直接证据"
+must    "$FS" '★★可滚翻转' "必须记录 needScroll 翻转时刻与当时的触摸状态"
+must    "$FS" '右栏状态→' "必须记录右栏完整的滚动状态迁移时间线（拖动/惯性/静止）"
+must    "$FS" '右栏滑行\[' "必须结算右栏逐帧位移（判滑行是否均匀）"
+must    "$FS" 'traceAccumDy' "必须逐帧累积位移（且只在停稳时结算，不逐帧打印）"
+mustnot "$TL" '★左栏开始拦截' "cu 收尾：该埋点已撤（左侧问题确认解决），源码与 dex 都不得再有"
+
+echo "===== （末尾）cn：不再把「能否滚动」押在 GestureDetector 的返回值上（2026-09-30） ====="
+# 依据：cm 第二轮取证（用户"中间位置连续快速滑动"）量化出 ——
+#   左栏 56 次手势：46 次比值 0.97~1.00 完美跟手，**20 次「手势内滚动=0 且抬起后惯性=0」**
+#   （手指滑 350~684px，内容一格没动）。
+#   强相关：零响应手势里只有 25% 出现「开始拦截」，正常手势 94%。
+# 根因：intercept = super.onInterceptTouchEvent(ev) || _gestureDetector.onTouchEvent(ev)
+#   ⇒ **能否滚动完全取决于 detector 的状态机**。而原实现只在 needScroll=true 时才喂 detector，
+#     `needScroll=false`（chip 不足）期间的 DOWN 被漏喂 ⇒ detector 缺基准点 ⇒ onScroll 永不触发
+#     ⇒ intercept 恒 false ⇒ 事件让给 chip ⇒ 滚动彻底不发生。
+# 做法（两项，均只在 detector **未处理**时生效 ⇒ 正常路径逐字不变）：
+#   ① **无条件**喂 detector（消除漏喂 DOWN 的窗口；顺带消除 `||` 短路隐患）
+#   ② 原始 MOVE 位移兜底：拦截阶段兜底接管 + 处理阶段兜底自滚
+must    "$TL" 'val detectorHandled' "必须把 detector 调用提前并无条件执行（原实现只在 needScroll 时喂 ⇒ 漏喂 DOWN 即断链）"
+must    "$TL" '\|\| detectorHandled' "拦截判定必须改用提前算好的 detectorHandled（防退回原先的短路写法）"
+must    "$TL" 'l1ArmFallback' "必须在 DOWN 时记录兜底基准点"
+must    "$TL" 'l1MovedEnough' "必须按原始位移判断是否脱离 slop（不依赖 detector）"
+must    "$TL" 'l1FallbackScroll' "必须有兜底滚动实现"
+must    "$TL" '_l1Slop' "兜底阈值必须取系统 scaledTouchSlop（不得写死）"
+mustnot "$TL" '★★兜底接管' "必须埋「兜底接管」cu 收尾：该埋点已撤"
+mustnot "$TL" '★★兜底滚动生效' "必须埋「兜底滚动生效」cu 收尾：该埋点已撤"
+must    "$TL" '!handled && event\.actionMasked == MotionEvent\.ACTION_MOVE' "兜底自滚必须限定在 ACTION_MOVE（UP/CANCEL 帧兜底会多滚一次，破坏正常路径）"
+must    "$TL" 'if \(!needScroll\) return true' "onFling 必须加 needScroll 守卫（无条件喂 detector 后，无内容可滚时不得起 fling）"
+# 兜底必须只在 detector 未处理时执行（保证"正常路径零改动"这一性质不被破坏）
+must    "$TL" 'if \(!intercept && ev\.actionMasked == MotionEvent\.ACTION_MOVE && l1MovedEnough\(ev\)\)' "拦截兜底必须先确认 detector 未接管（不得无条件接管）"
+
+echo "===== （末尾）co：右栏 fling 速度取证（2026-09-30 · **只观测，不改行为**） ====="
+# 依据：cn 实测「接触时间短地快速滑」时，惯性阶段只有 **16~28ms（1~2 帧）**，
+# 而尾6帧仍为 100~200px/帧 ⇒ **不是自然减速**。需分辨两种可能：
+#   甲 速度没被采纳（系统 vy 远小于手指真实速度） ⇒ 修法：抬速兜底
+#   乙 fling 启动后被立刻中止                     ⇒ 修法：查中止者
+# 安全性已核实：TvRecyclerView **整个库**（javap + 二进制常量池全类扫描）0 处
+#   setOnFlingListener / SnapHelper / mOnFlingListener ⇒ 挂探针不会覆盖库内逻辑。
+must    "$FS" '★右栏fling请求' "必须记录系统实际请求的 fling 速度（与手速同帧对照才能分辨甲乙）"
+must    "$FS" 'traceRightGestureVelocity\(ev\)' "速度取证必须在 dispatchTouchEvent 中独立进行（不得依赖 View 内部状态）"
+must    "$FS" 'object : RecyclerView\.OnFlingListener\(\)' "必须挂 onFling 探针"
+must    "$FS" 'return false // 回退路径' "onFling 探针必须返回 false 交回默认处理（改成 true 等于劫持 fling）"
+must    "$FS" '距UP=' "滑行结算必须给出「距UP」（＝从抬起到停稳的时长，量化「惯性有多短」）"
+must    "$FS" 'l1RvHandVy' "必须把手速带进 fling 日志（否则无法同帧对照两个速度）"
+must    "$FS" '★右栏UP 手速=' "必须在 UP 时刻记录手速与横速（RecyclerView 发起 fling 要求 |xvel|<|yvel|）"
+must    "$FS" '可下滚=' "必须记录 UP 时刻能否继续滚（RecyclerView 发起 fling 的另一前置条件）"
+
+echo "===== （末尾）cp：把「拖动帧」与「惯性帧」分开记账（2026-09-30 · **只观测**） ====="
+# 依据：co 已确证 ① 速度 100% 被采纳（vy 逐条等于手速）② 每次 UP 都发起了 fling（59/59）
+#   ③ **但 vy 与惯性时长完全无相关**（vy=23392→4ms，vy=17010→1074ms）⇒ **发起后被极早中止**；
+#   ④ 已排除：app 层无 stopScroll/scrollToPosition、父容器非 nested-scrolling、item 不可获焦
+#      （item_search.xml 无 focusable ⇒ 库里的 requestChildRectangleOnScreen→smoothScrollBy 不触发）、
+#      库内 stopScroll/abortAnimation/forceFinished 全 0 处、帧耗时 6~7ms。
+# 但 traceDyList 从上次 IDLE 起就累积、把拖动帧与惯性帧**混装** ⇒ 出现「距UP=18ms 却有 7 帧」
+#   这种自相矛盾，无法判断惯性阶段到底有没有产生滚动。本版把它切开：
+#   惯性帧=0 ⇒ 被**立即中止**；惯性帧>0 但末帧仍大 ⇒ **中途被中止**。
+must    "$FS" 'traceSettleDy' "必须单独累积惯性阶段的帧（否则无法区分「立即中止」与「中途中止」）"
+must    "$FS" 'rv\.scrollState' "累积时必须按当前滚动状态分流"
+must    "$FS" '右栏惯性\[停稳\]' "必须单独输出惯性阶段的帧数/位移/首末帧"
+must    "$FS" '惯性帧=0（\*\*fling 一帧都没跑\*\*）' "必须显式标注「惯性帧=0」这个决定性情形"
+must    "$FS" 'scrollState == RecyclerView\.SCROLL_STATE_SETTLING' "分流条件必须是 SETTLING（不得用别的状态猜）"
+must    "$FS" 'traceSettleDy\.clear\(\)' "结算后必须清空惯性列表（否则跨手势累积）"
+
+echo "===== （末尾）cq：用同速度复算「理论滑行距离」（2026-09-30 · **只观测**） ====="
+# 依据：cp 实测 `惯性帧=2`（13ms）、末帧 161px/帧（≈23000px/s）却直接静止
+#   ⇒ `OverScroller` 自己认为「跑完了」，必须知道它到底算出了多远：
+#   ① 独立 scroller 也算出很短 ⇒ **scroller 本身就算出短距离**（指向系统级因素）
+#   ② 独立 scroller 算出很长、而实测只有几百 px ⇒ **fling 被替换或中止**
+# ⚠️ 前提发现：设备 `animator_duration_scale = 0.5`（安卓 fling 由动画时钟驱动，0.5x ⇒ 时长减半）。
+#   ⇒ 必须把该值与密度随埋点一起记录，才能把它当变量排除。
+must    "$FS" 'l1ProbeScroller' "必须用独立的 OverScroller 复算理论距离（不得只靠推算）"
+must    "$FS" '理论距离=' "必须记录理论滑行距离"
+must    "$FS" '动画缩放=' "必须记录 animator_duration_scale（它直接决定 fling 时长）"
+must    "$FS" 'ANIMATOR_DURATION_SCALE' "必须读系统动画缩放设置"
+must    "$FS" 'probe\.fling\(0, 0, velocityX, velocityY' "探针必须用与系统相同的参数起 fling"
+
+echo "===== （末尾）cr：修掉探针的「飞轮累加」（2026-09-30 · **只观测**） ====="
+# cq 轮实测踩到：`OverScroller` 有**飞轮（flywheel）**机制 —— `fling()` 开头若
+#   `mFlywheel && !isFinished()`，会把**上一次的残余速度加上去**。
+#   复用同一个探针实例 ⇒ 速度逐次累加 ⇒ 理论距离单调爆炸
+#   （cq 实测从 13,706 一路涨到 2,546,629，与 vy 完全脱钩）⇒ **该轮理论距离数据无效**。
+# 修法：fling 前先 `abortAnimation()`（把 mFinished 置 true，飞轮条件即不成立）。
+must    "$FS" 'probe\.abortAnimation\(\)' "探针 fling 前必须先 abortAnimation（否则飞轮累加、理论距离无效）"
+
+echo "===== （末尾）cs：打出惯性帧序列，分辨「匀速」还是「衰减」（2026-09-30 · **只观测**） ====="
+# 依据：cq 实测「平均速度 / 初速」达 60%~117%（自然 `SplineOverScroller` 衰减应远低于 100%），
+#   且短惯性样本普遍「末帧≈首帧」（例 169→161）⇒ **滚动几乎没有减速**。
+# 「匀速跑一段 + 突然停」精确匹配 `smoothScrollBy`（线性插值器），
+#   而 `fling` 是指数/样条衰减 ⇒ 必须把逐帧序列打出来分辨。
+# 判据：前 12 帧基本恒定（±10%）⇒ 匀速 ⇒ `smoothScrollBy` 类；
+#      前 12 帧单调递减 ⇒ 正常 fling 衰减。
+# 只在 IDLE 时一次性打印（不逐帧刷），避免自造卡顿污染结论。
+must    "$FS" '惯性前12帧=' "必须打出惯性阶段前 12 帧的 dy 序列（分辨匀速/衰减的唯一判据）"
+must    "$FS" 'traceSettleDy\.take\(12\)' "序列必须取自**惯性**列表（不能取自混装的 traceDyList）"
+
+echo "===== （末尾）ct：自研惯性滑动，绕开 smoothScrollBy（2026-09-30 · **改行为，带回退开关**） ====="
+# 依据（cs 实测铁证）：惯性帧序列**完全恒定、零衰减**（例 164~188 / 192~219 / 179~205，12 帧内无递减趋势）
+#   ⇒ 只可能是 `smoothScrollBy`（**线性插值器**）；真正的 `fling` 必然指数/样条衰减。
+#   ⇒ 系统 fling 被 `TvRecyclerView.requestChildRectangleOnScreen → smoothScrollBy` 覆盖。
+# 改法：`onFling` 返回 true **自己驱动** —— 真实时钟 + 指数衰减：
+#   ① 绕开 smoothScrollBy（系统 fling 不再启动） ② 不受 animator_duration_scale 影响
+# 回退：`l1OwnFling = false` 即回到系统行为（其余代码不参与）。
+must    "$FS" '★右栏自研fling' "必须埋自研 fling 的结果（帧/位移/时长/结束原因）"
+must    "$FS" 'private val l1OwnFling = true' "必须带回退开关且默认开启"
+must    "$FS" 'l1FlingTauMs' "衰减时间常数必须显式定义（决定滑行距离 ≈ v0 × TAU）"
+must    "$FS" 'startOwnFling\(velocityY\)' "onFling 必须调用自研 fling 并返回 true 劫持"
+must    "$FS" 'endOwnFling\("用户按下"\)' "用户按下必须立即停掉自研惯性（否则与手指拖动叠加）"
+must    "$FS" 'postOnAnimation' "自研 fling 必须用 postOnAnimation 逐帧驱动"
+must    "$FS" 'computeVerticalScrollOffset\(\)' "必须用 offset 不再变化来判断撞界并停止"
