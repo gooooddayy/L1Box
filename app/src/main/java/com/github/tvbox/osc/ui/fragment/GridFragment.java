@@ -295,12 +295,14 @@ public class GridFragment extends BaseLazyFragment {
 
     private void initData() {
         if (sortData == null) { // 系统回收后 fragment 恢复可能拿不到分类数据，直接 getList 会空指针
+            System.out.println("首页网格：sortData=null ⇒ showEmpty");
             showEmpty();
             return;
         }
         // 冷启动缓存恢复：直接展示上次的首页数据（不依赖配置加载完成，也不拉网络），
         // page 置 2 让"加载更多"从第二页无缝续拉
         if (presetVideos != null && !presetVideos.isEmpty()) {
+            System.out.println("首页网格[" + sortData.id + "]：缓存渲染 " + presetVideos.size() + " 条（不拉网络）");
             showSuccess();
             isLoad = true;
             page = 2;
@@ -309,9 +311,11 @@ public class GridFragment extends BaseLazyFragment {
             return;
         }
         if (ApiConfig.get().getHomeSourceBean().getApi()==null){// 系统杀死app恢复缓存的fragment后会直接getList,此时首页api都未加载完
+            System.out.println("首页网格[" + sortData.id + "]：preset=null 且首页api未就绪 ⇒ showEmpty（不重试）");
             showEmpty();
             return;
         }
+        System.out.println("首页网格[" + sortData.id + "]：preset=null ⇒ 发起网络加载 page=" + page);
         showLoading();
         isLoad = false;
         scrollTop();

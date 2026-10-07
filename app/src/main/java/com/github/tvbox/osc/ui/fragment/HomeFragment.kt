@@ -368,14 +368,21 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
      */
     private fun tryRestoreCache(curUrl: String): Boolean {
         val cache = HomeCache.get()
-        if (cache.apiUrl != curUrl) return false
+        if (cache.apiUrl != curUrl) {
+            System.out.println("首页缓存：未命中（线路不匹配 缓存=" + cache.apiUrl + " 当前=" + curUrl + "）")
+            return false
+        }
         if (cache.empty) {
+            System.out.println("首页缓存：命中空源标记 ⇒ 显示添加订阅引导")
             showSuccess()
             showHomeEmpty()
             return true
         }
         val tabs = cache.tabs ?: return false
-        if (tabs.isEmpty()) return false
+        if (tabs.isEmpty()) {
+            System.out.println("首页缓存：未命中（骨架 tab 数为 0）")
+            return false
+        }
         val sorts = ArrayList<SortData>()
         for (t in tabs) {
             if (t.id == null) continue
@@ -384,6 +391,16 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
             sorts.add(sd)
         }
         if (sorts.isEmpty()) return false
+        val withVideos = tabs.count { it.videos != null && it.videos.isNotEmpty() }
+        // cz（2026-10-07 实证修复）：下拉刷新途中被杀会留下「骨架有、影片全空」的半截缓存。
+        // 这种缓存绝不能当可用 —— 否则会渲染出空分类，并让 startHomeLoad 跳过重拉，
+        // 首页就永久停在"暂无数据"（真机日志 17:52:37.059 有影片的=0 仍判命中即此因）。
+        // 判据：一个分类都没有影片 ⇒ 判缓存不完整，走全量重新加载。
+        if (withVideos == 0) {
+            System.out.println("首页缓存：未命中（骨架 " + tabs.size + " 个但影片全空 ⇒ 上次刷新未完成，改走全量加载）")
+            return false
+        }
+        System.out.println("首页缓存：命中 骨架 tabs=" + tabs.size + " 其中有影片的=" + withVideos + " ⇒ 跳过重拉")
         mSortDataList = sorts
         mSkipHomeLoadOnce = true
         showSuccess()
@@ -398,6 +415,7 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
     private fun startHomeLoad() {
         if (mSkipHomeLoadOnce) {
             // 冷启动已用缓存渲染且线路未变：后台刷新只保证订阅/jar/站点池就绪，不重拉首页
+            System.out.println("首页加载：缓存已渲染 ⇒ 跳过重拉（mSkipHomeLoadOnce）")
             mSkipHomeLoadOnce = false
             cancelHomeWatchdog()
             mLoadInFlight = false
@@ -406,6 +424,7 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
         }
         mHomeSiteIndex = 0
         mHomeSiteCandidates = buildHomeSiteCandidates()
+        System.out.println("首页加载：真拉首页 候选站点=" + mHomeSiteCandidates.size + " ⇒ 先清空缓存影片列表")
         // 每次真拉首页前清掉旧影片列表，防止换线路后旧数据混入新缓存
         HomeCache.clearVideos()
         if (mHomeSiteCandidates.isEmpty()) {

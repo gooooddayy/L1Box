@@ -21,10 +21,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.angcyo.tablayout.DslTabLayout
-import com.blankj.utilcode.util.GsonUtils
 import com.blankj.utilcode.util.KeyboardUtils
-import com.blankj.utilcode.util.LogUtils
-import com.blankj.utilcode.util.ScreenUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.github.catvod.crawler.JarLoader
 import com.github.catvod.crawler.JsLoader
@@ -33,7 +30,6 @@ import com.github.tvbox.osc.api.ApiConfig
 import com.github.tvbox.osc.api.ApiConfig.LoadConfigCallback
 import com.github.tvbox.osc.base.BaseVbActivity
 import com.github.tvbox.osc.bean.AbsXml
-import com.github.tvbox.osc.bean.DoubanSuggestBean
 import com.github.tvbox.osc.bean.Movie
 import com.github.tvbox.osc.bean.SourceBean
 import com.github.tvbox.osc.databinding.ActivityFastSearchBinding
@@ -41,9 +37,7 @@ import com.github.tvbox.osc.event.RefreshEvent
 import com.github.tvbox.osc.event.ServerEvent
 import com.github.tvbox.osc.picasso.MyOkhttpDownLoader
 import com.github.tvbox.osc.ui.adapter.FastSearchAdapter
-import com.github.tvbox.osc.ui.dialog.DoubanSuggestDialog
 import com.github.tvbox.osc.ui.dialog.SearchCheckboxDialog
-import com.github.tvbox.osc.ui.dialog.SearchSuggestionsDialog
 import com.github.tvbox.osc.ui.dialog.TipDialog
 import com.github.tvbox.osc.util.DeviceProfile
 import com.github.tvbox.osc.util.FastClickCheckUtil
@@ -55,16 +49,10 @@ import com.github.tvbox.osc.util.L1ImageInflight
 import com.github.tvbox.osc.util.NetworkMonitor
 import com.github.tvbox.osc.util.SearchHelper
 import com.github.tvbox.osc.viewmodel.SourceViewModel
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.google.gson.reflect.TypeToken
-import com.lxj.xpopup.XPopup
-import com.lxj.xpopup.core.BasePopupView
-import com.lxj.xpopup.interfaces.SimpleCallback
 import com.lzy.okgo.OkGo
 import com.lzy.okgo.callback.AbsCallback
-import com.lzy.okgo.callback.StringCallback
 import com.squareup.picasso.Picasso
 import com.orhanobut.hawk.Hawk
 import com.zhy.view.flowlayout.FlowLayout
@@ -247,7 +235,6 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     private var isFilterMode = false
     private var searchFilterKey: String? = "" // 过滤的key
     private var resultVods = HashMap<String, MutableList<Movie.Video>>()
-    private var mSearchSuggestionsDialog: SearchSuggestionsDialog? = null
 
     /** 订阅失败态的提示弹窗（#2 定稿：复用现成 TipDialog，不新增界面） */
     private var subFailDialog: TipDialog? = null
@@ -459,17 +446,6 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             }
         }
 
-        searchAdapter.setOnItemLongClickListener { _, _, position ->
-            val video = searchAdapter.data[position]
-            getDoubanSuggest(video.name)
-            true
-        }
-        searchAdapterFilter.setOnItemLongClickListener { _, _, position ->
-            val video = searchAdapterFilter.data[position]
-            getDoubanSuggest(video.name)
-            true
-        }
-
         setLoadSir(mBinding.llLayout)
     }
 
@@ -588,35 +564,6 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         mBinding.flHistory.postDelayed({ initHistorySearch() }, 300)
     }
 
-    /**
-     * 联想搜索
-     */
-    private fun showSuggestDialog(list: List<String>) {
-        if (mSearchSuggestionsDialog == null) {
-            mSearchSuggestionsDialog =
-                SearchSuggestionsDialog(this@FastSearchActivity, list
-                ) { _, text ->
-                    LogUtils.d("搜索:$text")
-                    mSearchSuggestionsDialog!!.dismissWith { search(text) }
-                }
-            XPopup.Builder(this@FastSearchActivity)
-                .atView(mBinding.etSearch)
-                .notDismissWhenTouchInView(mBinding.etSearch)
-                .isViewMode(true) //开启View实现
-                .isRequestFocus(false) //不强制焦点
-                .setPopupCallback(object : SimpleCallback() {
-                    override fun onDismiss(popupView: BasePopupView) { // 弹窗关闭了就置空对象,下次重新new
-                        super.onDismiss(popupView)
-                        mSearchSuggestionsDialog = null
-                    }
-                })
-                .asCustom(mSearchSuggestionsDialog)
-                .show()
-        } else { // 不为空说明弹窗为打开状态(关闭就置空了).直接刷新数据
-            mSearchSuggestionsDialog!!.updateSuggestions(list)
-        }
-    }
-
     private fun saveSearchHistory(searchWord: String?) {
         if (!searchWord.isNullOrEmpty()) {
             val history = Hawk.get(HawkConfig.HISTORY_SEARCH, ArrayList<String?>())
@@ -685,14 +632,11 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             return
         }
 
-        //先移除监听,避免重新设置要搜索的文字触发搜索建议并弹窗
+        // 先移除监听，避免回填文字触发输入态联动（热门/历史的显隐）
         mBinding.etSearch.removeTextChangedListener(this)
         mBinding.etSearch.setText(title)
         mBinding.etSearch.setSelection(title.length)
         mBinding.etSearch.addTextChangedListener(this)
-        if (mSearchSuggestionsDialog != null && mSearchSuggestionsDialog!!.isShow) {
-            mSearchSuggestionsDialog!!.dismiss()
-        }
         if (!Hawk.get(HawkConfig.PRIVATE_BROWSING, false)) { //无痕浏览不存搜索历史
             saveSearchHistory(title)
         }
@@ -2463,38 +2407,9 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     override fun beforeTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
     override fun onTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
     override fun afterTextChanged(editable: Editable) {
-        val text = editable.toString()
-        if (TextUtils.isEmpty(text)) {
-            mSearchSuggestionsDialog?.dismiss()
+        // 输入联想已整体移除（用户 2026-10-07 决定不要）：非空输入不再请求任何联想接口。
+        if (TextUtils.isEmpty(editable.toString())) {
             hideHotAndHistorySearch(false)
-        } else {
-            getDoubanSuggest(text)
         }
-    }
-
-    private fun getDoubanSuggest(text: String) {
-        OkGo.get<String>("https://movie.douban.com/j/subject_suggest?q="+text.trim())
-            .execute(object : StringCallback(){
-                override fun onSuccess(response: com.lzy.okgo.model.Response<String>?) {
-                    val list = GsonUtils.fromJson<List<DoubanSuggestBean>>(
-                        response?.body(),
-                        object : TypeToken<List<DoubanSuggestBean>>() {}.type
-                    )
-
-                    //暂时只保留第一个,分数查询接口有限制
-                    val filterList = list.filter {
-                        it.title == text
-                    }
-                    if (filterList.isEmpty()){
-                        ToastUtils.showShort("暂无评分信息")
-                        return
-                    }
-
-                    XPopup.Builder(this@FastSearchActivity)
-                        .maxHeight(ScreenUtils.getScreenHeight() - (ScreenUtils.getScreenHeight() / 4))
-                        .asCustom(DoubanSuggestDialog(this@FastSearchActivity,filterList.subList(0,1)))
-                        .show()
-                }
-            })
     }
 }

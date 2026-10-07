@@ -45,6 +45,21 @@ public class HomeCache {
 
     /** 驻留内存态：首次读盘后常驻，后续读写均基于它，避免重复 IO */
     private static Data mem;
+
+    /**
+     * 落盘兜底快照（tab id → 影片列表）。cz（2026-10-07 实证修复）新增。
+     *
+     * 为什么需要它：刷新时 {@link #clearVideos()} 会清掉内存里的影片列表 —— 这是**必须的**，
+     * 否则各分类会拿旧数据秒显后就认为"已有数据"，不再重新拉取，下拉刷新等于没刷。
+     * 但原实现顺手把"清空"也落了盘，于是「清空已写盘、新数据还没回来」这个中间态被持久化：
+     * 刷新途中被杀进程，磁盘上就留下「骨架有、影片全空」的半截缓存，下次冷启动误判缓存可用，
+     * 首页永久停在"暂无数据"（真机日志 17:52:34.719 清空 → 17:52:36.047 被杀 → 17:52:37.059 有影片的=0）。
+     *
+     * 所以清空时先把影片**备份到这里**，落盘时再补回快照：内存照样是空的（刷新行为不变），
+     * 磁盘上则始终是「上一次完整缓存」。换线路（apiUrl 变化）或空源时整体作废，绝不串线路数据。
+     */
+    private static final Map<String, List<Movie.Video>> keepVideos = new LinkedHashMap<>();
+
     private static final Gson GSON = new Gson();
     // 统一线程池入口：命名 + daemon + 空闲回收，避免进程里再多一个永不释放的匿名线程池
     private static final ExecutorService POOL = L1Executors.fixed("l1box-homecache", 1);
@@ -82,7 +97,11 @@ public class HomeCache {
     public static synchronized void saveSkeleton(String apiUrl, String homeSiteKey, List<MovieSort.SortData> sorts) {
         if (sorts == null || sorts.isEmpty()) return;
         Data d = get();
-        d.apiUrl = apiUrl == null ? "" : apiUrl;
+        // 换线路：兜底快照里是旧线路的影片，绝不能补进新线路的缓存
+        String newUrl = apiUrl == null ? "" : apiUrl;
+        String oldUrl = d.apiUrl == null ? "" : d.apiUrl;
+        if (!newUrl.equals(oldUrl)) keepVideos.clear();
+        d.apiUrl = newUrl;
         d.homeSiteKey = homeSiteKey == null ? "" : homeSiteKey;
         d.empty = false;
         Map<String, Tab> old = new LinkedHashMap<>();
@@ -108,24 +127,29 @@ public class HomeCache {
         for (Tab t : d.tabs) {
             if (sortId.equals(t.id)) {
                 t.videos = videos.size() > MAX_PER_TAB ? new ArrayList<>(videos.subList(0, MAX_PER_TAB)) : new ArrayList<>(videos);
+                // 这个分类的新数据已经到了，兜底快照不再需要它
+                keepVideos.remove(sortId);
                 writeAsync(d);
                 return;
             }
         }
     }
 
-    /** 真拉首页前清空旧影片列表，防止换线路后旧数据混入新缓存 */
+    /**
+     * 真拉首页前清空**内存**里的旧影片列表（让各分类重新拉取，而不是拿旧数据秒显后就不管了）。
+     *
+     * ⚠️ cz（2026-10-07 实证修复）：这里**只清内存、不再落盘**，清掉的影片先备份到 {@link #keepVideos}，
+     * 落盘时由 {@link #snapshotOf} 补回。原实现顺手 writeAsync 落盘，导致"清空已写盘、新数据还没回来"
+     * 这个中间态被持久化 —— 刷新途中被杀就会留下半截缓存。
+     */
     public static synchronized void clearVideos() {
         Data d = get();
         if (d.tabs == null) return;
-        boolean changed = false;
+        keepVideos.clear();
         for (Tab t : d.tabs) {
-            if (t.videos != null) {
-                t.videos = null;
-                changed = true;
-            }
+            if (t.videos != null && !t.videos.isEmpty()) keepVideos.put(t.id, t.videos);
+            t.videos = null;
         }
-        if (changed) writeAsync(d);
     }
 
     /** 空源状态落盘：下次冷启动直接显示"添加订阅源"引导 */
@@ -134,6 +158,7 @@ public class HomeCache {
         d.apiUrl = apiUrl == null ? "" : apiUrl;
         d.empty = true;
         d.tabs = new ArrayList<>();
+        keepVideos.clear();
         writeAsync(d);
     }
 
@@ -178,7 +203,12 @@ public class HomeCache {
         });
     }
 
-    /** 先做快照拷贝再异步落盘，避免主线程继续改对象导致 JSON 半新半旧 */
+    /**
+     * 先做快照拷贝再异步落盘，避免主线程继续改对象导致 JSON 半新半旧。
+     *
+     * 内存里某分类的影片被 {@link #clearVideos()} 清空（刷新进行中）时，用 {@link #keepVideos}
+     * 的备份补齐再落盘 —— 磁盘上永不出现「骨架有、影片全空」的半截缓存。
+     */
     private static Data snapshotOf(Data d) {
         Data snapshot = new Data();
         snapshot.apiUrl = d.apiUrl;
@@ -191,7 +221,11 @@ public class HomeCache {
                 n.id = t.id;
                 n.name = t.name;
                 n.flag = t.flag;
-                n.videos = t.videos == null ? null : new ArrayList<>(t.videos);
+                if (t.videos != null && !t.videos.isEmpty()) {
+                    n.videos = new ArrayList<>(t.videos);
+                } else if (keepVideos.containsKey(t.id)) {
+                    n.videos = new ArrayList<>(keepVideos.get(t.id));
+                }
                 snapshot.tabs.add(n);
             }
         }
