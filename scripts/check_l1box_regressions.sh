@@ -9,7 +9,7 @@
 
 set -uo pipefail
 
-WS="C:/Users/Administrator/WorkBuddy/2026-08-19-14-43-05"
+WS="<工作区>"
 ROOT="$WS/FreeBox-src"
 FAIL=0
 
@@ -274,7 +274,7 @@ mustnot "$FS" 'refill|Refill' "补全轮代码不得复现（jar 请求量翻倍
 mustnot "$DP" 'refillConcurrency' "补全轮并发配置不得复现"
 
 # M 节：2026-09-12 详情页片名兜底
-# 症状：部分源（如「天堂」等 jar 源）detailContent 不回 vod_name → 详情页标题显示"暂无信息"，
+# 症状：部分源（如「<站点F>」等 jar 源）detailContent 不回 vod_name → 详情页标题显示"暂无信息"，
 #       且空名会随 VodInfo 存进历史/收藏。若回退，此类源永远显示占位文案。
 must    "$DA" 'bundle\.getString\("title"\)' "详情页要读取来源页带来的片名兜底"
 must    "$DA" 'TextUtils\.isEmpty\(mVideo\.name\) && !TextUtils\.isEmpty\(fallbackTitle\)' "仅源详情缺名时才补（绝不覆盖源返回的真名）"
@@ -324,7 +324,7 @@ must    "$JL" 'private boolean isNativeWindow' "门禁判据集中在 isNativeWi
 # 💡 2026-09-28 修正：这条原来是 `!key.equals(proxyHolderKey())` —— 它把**手绑成功**的 jar 也一起挡了。
 # 手绑成功（"承接已有的本地代理"，getLoader 已连上正在跑的代理）本身就证明原生引用有效，却因为
 # occupyProxy() 只在"jar 自己重启代理"时被调用而永远进不了 holder 名单 ⇒ 它的代理型站点被**永久** 503。
-# 实测：`WexAiYueYue` 下发的 `127.0.0.1:9978/proxy?do=…` 被瞬时拒绝（预取 7ms 失败、jar 的 localProxy
+# 实测：`<站点B>` 下发的 `127.0.0.1:9978/proxy?do=…` 被瞬时拒绝（预取 7ms 失败、jar 的 localProxy
 # 从未被调用），cb/cc/dd **三轮 /proxy 一次都没成功**。现在改由 proxyCapable() 判定：holder 照旧放行，
 # 手绑 jar 只有在"绑定时那一任代理至今仍活着"（holder 与世代都没变）时才放行 —— 防线不降级。
 mustnot "$JL" '!key\.equals\(ProtectedInitJar\.proxyHolderKey\(\)\)' "不得再用「必须是 holder」单判据（会把合法的代理持有者换掉）"
@@ -698,7 +698,7 @@ echo "===== AA. 播放成功率·第四批：失败态可见 + 本机代理不�
 #      实测界面继续转了 65 秒。用户看到的是"卡死"，不是"出错"，也不会想到还能重试；
 #   2) 变形重试的守卫只认 /l1.m3u8，把网盘源的 127.0.0.1:9978/proxy 也变形了一遍 ——
 #      本机同一端口不存在另一套协议，必然失败，白耗一次尝试；
-#   3) 站点会下发不是 URL 的"地址"（实测 Ksvideo-<hex>，全工程无此协议）。
+#   3) 站点会下发不是 URL 的"地址"（实测 <站点H>-<hex>，全工程无此协议）。
 #      它交给内核必失败，还会走完整条兜底链，实测每次白耗约 12 秒。
 # —— 失败出口必须只剩一个形态：关转圈、留错误态、带「重试」
 must    "$PF" 'void errorWithRetry\(String err\)' "失败出口只剩一个形态（不得再按 finish 分支）"
@@ -1315,7 +1315,7 @@ must    "$PF" 'PlayerHelper\.wrapForCast\(url, mPlayingHeaders\)' "播放页投�
 must    "$DA" 'PlayerHelper\.wrapForCast\(' "详情页投屏必须走包装（两个入口同一份行为）"
 
 echo "===== AI. 2026-09-24 bu：判空不得吃掉「被跳过的站点」 + 池签名含来源 + 消幽灵收尾 ====="
-# 症状：冷门词（用户实测 `军鸡`）两分钟前在剧圈99 是搜得到的，却被判成「暂无数据」。
+# 症状：冷门词（用户实测 `军鸡`）两分钟前在<站点A> 是搜得到的，却被判成「暂无数据」。
 # 根因①：每轮日志都 `跳过=1`（一个 jar 站点没被问到），而五条判据里没有一条看这个数 ——
 #        「40 站里 1 站没问、39 站真没有」和「40 站全问过都没有」被判成同一件事。
 # 根因②（A2 的连带代价）：loadSeq 去重后签名在 jar 首次结论处冻结，「首次装载失败 → 后来装上」
@@ -1531,7 +1531,7 @@ must    "$PF" 'briefMsg' "净化失败必须带异常原文（类名之外的最
 # ===== cf（2026-09-29）：手绑放行判据去快照化 + 路由埋点判据修正 =====
 # ce 轮实测（_ce_dump.txt）：初版 proxyCapable 也比「代理世代号」，而世代号每次 occupyProxy 都 +1、
 # 与「这个 jar 还能不能用当前代理」无关（家族 jar 有 4 个，必然互相顶）。
-# 实证：14942a7863 手绑于 gen1 → 两次接管后 gen=3 ⇒ 判死，站点 WexAiYueYue 100% 503；
+# 实证：14942a7863 手绑于 gen1 → 两次接管后 gen=3 ⇒ 判死，站点 <站点B> 100% 503；
 # 对照组 0b9565d6a6 恰在两次接管之后手绑 ⇒ 放行、do=ck 返回 200。
 mustnot "$PI" 'hb\.gen' "手绑放行判据不得再比代理世代号（无关接管会把该继续成立的绑定误判为失效）"
 must    "$PI" 'if \(!hb\.holderKey\.isEmpty\(\) && !hb\.holderKey\.equals\(PROXY_HOLDER_KEY\)\) return false;' "手绑放行只比「绑定时那一任持有者」（换届必换 key，这才是代理是否被换掉的真实凭据）"
@@ -1546,8 +1546,8 @@ must    "$JL" '拒:该jar从未手绑成功' "拒绝措辞必须区分「从未�
 must    "$JL" '拒:手绑后已换届' "同上（另一种拒因）"
 
 # ===== cg（2026-09-29）：do→jar 学到的路由表 + 分段计时收口 =====
-# cf 轮实测（_cf_dump.txt）：/proxy 的 do 是 jar 自造的短标识（实测只有 hmys / ck），
-# 而 siteJarKeys 存的是 sourceBean.getKey()（配置站点 key，如 海绵/WexAiReBo）——
+# cf 轮实测（_cf_dump.txt）：/proxy 的 do 是 jar 自造的短标识（实测只有 <站点E> / ck），
+# 而 siteJarKeys 存的是 sourceBean.getKey()（配置站点 key，如 <站点E>/<站点C>）——
 # 两者是不同命名空间 ⇒ 13 次 do 全部 miss，恒回退 recentJarKey 碰运气
 # （同一个 do=ck 被路由到两个不同 jar：0b9565d6a6 / ae48218142）。
 must    "$JL" 'private final ConcurrentHashMap<String, String> doJarKeys' "必须新增 do→jar 路由表（do 与站点 key 不同命名空间，旧表查不中）"
@@ -1587,7 +1587,7 @@ must    "$JL" 'String routeSrc\)' "日志参数必须是「已定死的来源串
 mustnot "$JL" 'doJarKeys\.containsKey\(String\.valueOf\(params' "proxyLog 里不得再现场查 doJarKeys（自证效应，cg 轮踩过）"
 must    "$JL" '新学到' "首次学到某个 do 时必须标出来（区分「本次学到」与「本次命中已有」）"
 
-# ① 手绑世代账本：cf 轮实测条件不成立（配置里无 WexAiYueYue、整轮 1 次手绑 0 次接管），
+# ① 手绑世代账本：cf 轮实测条件不成立（配置里无 <站点B>、整轮 1 次手绑 0 次接管），
 # 改由**静态推理收口**判定为已修复，结论必须固化在注释里，否则后人无从复核。
 must    "$PI" '静态推理收口' "手绑世代账本的收口结论必须固化在注释里（不再实测，论证要留在代码上）"
 must    "$PI" '触发条件本身被移除' "必须说清「原 bug 的触发条件已不存在」这一核心论据"

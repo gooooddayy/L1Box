@@ -12,23 +12,23 @@ APPLY = '--apply' in sys.argv
 
 # 订阅/接口域名映射（保持可区分，但不暴露真名）
 HOST_MAP = {
-    'api.rmedphk.com':   'api.<订阅源A>.com',
-    'sdapi.e2wu4ht.com': 'sdapi.<订阅源A>.com',
-    'api.umygrx3.com':   'api.<订阅源B>.com',
-    'api.w32z7vtd.com':  'api.<订阅源B>.com',
-    'upload.baicanuc.cn': 'upload.<订阅源C>.cn',
-    'tv.nxog.top':        'tv.<订阅源C>.top',
+    'api.<订阅源A>.com':   'api.<订阅源A>.com',
+    'sdapi.<订阅源A>.com': 'sdapi.<订阅源A>.com',
+    'api.<订阅源B>.com':   'api.<订阅源B>.com',
+    'api.<订阅源B>.com':  'api.<订阅源B>.com',
+    'upload.<订阅源C>.cn': 'upload.<订阅源C>.cn',
+    'tv.<订阅源C>.top':        'tv.<订阅源C>.top',
 }
 
 # 精确串替换
 LITERAL = [
-    ('8d88c676', '<设备序列号>'),
-    ('PJE110', '测试机'),
-    ('C:/Users/Administrator/WorkBuddy/2026-08-19-14-43-05', '<工作区>'),
-    ('C:\\Users\\Administrator\\WorkBuddy\\2026-08-19-14-43-05', '<工作区>'),
-    ('C:/Users/Administrator/.workbuddy', '<本机>/.workbuddy'),
-    ('C:\\Users\\Administrator\\.workbuddy', '<本机>\\.workbuddy'),
-    ('C:/Users/Administrator/.gradle', '<本机>/.gradle'),
+    ('<设备序列号>', '<设备序列号>'),
+    ('测试机', '测试机'),
+    ('<工作区>', '<工作区>'),
+    ('<本机>/WorkBuddy\\2026-08-19-14-43-05', '<工作区>'),
+    ('<本机>/.workbuddy', '<本机>/.workbuddy'),
+    ('<本机>/.workbuddy', '<本机>\\.workbuddy'),
+    ('<本机>/.gradle', '<本机>/.gradle'),
 ]
 LITERAL += list(HOST_MAP.items())
 
@@ -37,7 +37,7 @@ REGEX = [
     (re.compile(r'192\.168\.\d{1,3}\.\d{1,3}'), '192.168.x.x'),
     # 通用整机路径：任何盘符 + Users\<用户名>（覆盖根目录配置文件，LITERAL 只列了固定两处工作区前缀）
     (re.compile(r'[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}[A-Za-z0-9_.\-]+[\\/]{1,2}'), '<本机>/'),
-    # Gradle properties 的**转义形态**：反斜杠写作 `\\`、冒号写作 `\:`（形如 `C\:\\Users\\X\\`）。
+    # Gradle properties 的**转义形态**：反斜杠写作 `\\`、冒号写作 `\:`（形如 `<本机>/`）。
     # 上一条要求盘符后紧跟 `:`，因此**匹配不到**这种形态 —— 实测漏网 `gradle.properties` 的
     # `org.gradle.java.home`（2026-09-29 修过一次、09-30 同步时又带回，属重复踩坑）。
     # 危害双重：① 泄露本机账号/工作区路径 ② clone 者构建因路径不存在而失败。

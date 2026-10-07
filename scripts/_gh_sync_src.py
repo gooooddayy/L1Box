@@ -12,7 +12,7 @@ import os
 import shutil
 import sys
 
-WS = r"C:\Users\Administrator\WorkBuddy\2026-08-19-14-43-05"
+WS = r"<工作区>"
 SRC = os.path.join(WS, "FreeBox-src")
 DST = os.path.join(WS, "_gh_upload_L1Box")
 
