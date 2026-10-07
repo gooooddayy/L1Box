@@ -357,7 +357,7 @@ public class PlayerHelper {
      * 而给同一个源每次请求随机 UA 会把不确定性带进播放链路，与"稳定优先"相悖 ——
      * UA 缺失时播放器用自带默认值，行为与改动前一致；站点显式给了 UA 的照旧原样使用。
      *
-     * 补 Referer 的收益是明确的：防盗链校验 Referer，缺了就 403；补的是地址自身的同源前缀，
+     * 补 Referer 的收益是明确的：部分站点会校验请求来源，缺失时请求会被拒；补的是地址自身的同源前缀，
      * 对不需要 Referer 的源无影响。只补缺失项，绝不覆盖站点已给的值。任何异常都退回原请求头。
      *
      * **使用边界（沿用既有口径）**：结果只喂**本机转发链路**（/l1play 与投屏码那条）和净化预取，
@@ -366,7 +366,7 @@ public class PlayerHelper {
     public static HashMap<String, String> fillMissingHeaders(String url, HashMap<String, String> headers) {
         try {
             if (url == null || !url.toLowerCase().startsWith("http")) return headers;
-            if (url.contains("://127.0.0.1") || url.contains("://localhost")) return headers; // 本地地址没有防盗链
+            if (url.contains("://127.0.0.1") || url.contains("://localhost")) return headers; // 本地地址无需来源校验
             if (headers != null) {
                 for (String k : headers.keySet()) {
                     if ("Referer".equalsIgnoreCase(k)) return headers;
@@ -422,7 +422,7 @@ public class PlayerHelper {
      * **要解决的是"外部播放器约 10 秒就结束"**：非 m3u8 直链是原样交给 MX 的，而 MX 只把请求头
      * **拼在地址字符串后面**（`MXPlayer.java`：`地址|k=v&k=v`）。首请求带头 → 起播成功并预读
      * 8~12 秒；**后续续传/重连丢掉请求头 → 上游断流 → 缓冲放完即"结束"**，时间点正好对上。
-     * （m3u8 之所以没事，是因为它拿到的是本机地址，本来就不校验防盗链。）
+     * （m3u8 之所以没事，是因为它拿到的是本机地址，本来就不做来源校验。）
      *
      * 换成 `http://127.0.0.1:<port>/l1play?u=<原地址>&h=<请求头>` 之后：请求头由 App 在服务端
      * 统一带上，播放器**每一个**请求（首播 / 续传 / 拖动）都必然带齐；`Range` 由本机透传、

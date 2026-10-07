@@ -141,11 +141,7 @@ public class FileUtils {
 
     public static String loadModule(String name) {
         try {
-        	if (name.endsWith("ali.js")) {
-                name = "ali.js";
-            } else if (name.endsWith("ali_api.js")) {
-                name = "ali_api.js";    
-            } else if (name.contains("similarity.js")) {
+            if (name.contains("similarity.js")) {
                 name = "similarity.js";
             } else if (name.contains("gbk.js")) {
                 name = "gbk.js";

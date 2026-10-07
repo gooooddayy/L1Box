@@ -591,34 +591,6 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
     /**
      * 联想搜索
      */
-    private fun getSuggest(text: String) {
-        // 加载热词
-        OkGo.get<String>("https://suggest.video.iqiyi.com/?if=mobile&key=$text")
-            .execute(object : AbsCallback<String?>() {
-                override fun onSuccess(response: com.lzy.okgo.model.Response<String?>) {
-                    val titles: MutableList<String> = ArrayList()
-                    try {
-                        val json = JsonParser.parseString(response.body()).asJsonObject
-                        val datas = json["data"].asJsonArray
-                        for (data: JsonElement in datas) {
-                            val item = data as JsonObject
-                            titles.add(item["name"].asString.trim { it <= ' ' })
-                        }
-                    } catch (th: Throwable) {
-                        LogUtils.d(th.toString())
-                    }
-                    if (titles.isNotEmpty()) {
-                        showSuggestDialog(titles)
-                    }
-                }
-
-                @Throws(Throwable::class)
-                override fun convertResponse(response: Response): String {
-                    return response.body()!!.string()
-                }
-            })
-    }
-
     private fun showSuggestDialog(list: List<String>) {
         if (mSearchSuggestionsDialog == null) {
             mSearchSuggestionsDialog =
@@ -2496,7 +2468,7 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             mSearchSuggestionsDialog?.dismiss()
             hideHotAndHistorySearch(false)
         } else {
-            getSuggest(text)
+            getDoubanSuggest(text)
         }
     }
 

@@ -9,7 +9,7 @@
 
 set -uo pipefail
 
-WS="<工作区>"
+WS="C:/Users/Administrator/WorkBuddy/2026-08-19-14-43-05"
 ROOT="$WS/FreeBox-src"
 FAIL=0
 

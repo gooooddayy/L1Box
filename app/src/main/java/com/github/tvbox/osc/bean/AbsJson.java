@@ -56,14 +56,14 @@ public class AbsJson implements Serializable {
         public String vod_level; //: 0
         public String vod_lock; //: 0
         public String vod_name; //: "咸鱼先生，Rose小姐之彗星来了"
-        public String vod_pic; //: "https://img.52swat.cn/upload/vod/20210410-1/c8a9342fff893c85e4a255da90fdbe3f.jpg"
+        public String vod_pic; //: "<图片地址>"
         public String vod_pic_screenshot; //: null
         public String vod_pic_slide; //: ""
         public String vod_pic_thumb; //: ""
         public String vod_play_from; //: "dbyun$$$dbm3u8"
         public String vod_play_note; //: "$$$"
         public String vod_play_server; //: "no$$$no"
-        public String vod_play_url; //: "第01集$https://vod3.buycar5.cn/share/dHsXTOBwbaX4idZb#第02集$https://vod3.buycar5.cn/share/qTlFmVkS3ABl7F4v#第03集$https://vod3.buycar5.cn/share/uNAQVhnro4Xnx4Y1#第04集$https://vod3.buycar5.cn/share/EtGK2XPmuzygMFmE#第05集$https://vod3.buycar5.cn/share/MC1U1bcQrGgVxF6h#第06集$https://vod3.buycar5.cn/share/gEtYSq6IX9KWPykl#第07集$https://vod3.buycar5.cn/share/OEMBq5ujsPaq8Sy7#第08集$https://vod3.buycar5.cn/share/bynmQTMBQwsVHtkn#第09集$https://vod3.buycar5.cn/share/Th7aQDVPOT1p6Cib#第10集$https://vod3.buycar5.cn/share/8AaZzRvh3fFk43Mi#第11集$https://vod3.buycar5.cn/share/YzEk819PQphuqDgL#第12集$https://vod3.buycar5.cn/share/vdAGJhlSg0o1yzcA$$$第01集$https://vod3.buycar5.cn/20210410/iWay2ycC/index.m3u8#第02集$https://vod3.buycar5.cn/20210410/5DpcrSCA/index.m3u8#第03集$https://vod3.buycar5.cn/20210410/wVdGBPgj/index.m3u8#第04集$https://vod3.buycar5.cn/20210410/cUVpM93e/index.m3u8#第05集$https://vod3.buycar5.cn/20210410/NWALmXkH/index.m3u8#第06集$https://vod3.buycar5.cn/20210410/lXZKFL7d/index.m3u8#第07集$https://vod3.buycar5.cn/20210411/3gQEOdxL/index.m3u8#第08集$https://vod3.buycar5.cn/20210411/yMLR7Fsz/index.m3u8#第09集$https://vod3.buycar5.cn/20210411/vMtFz4in/index.m3u8#第10集$https://vod3.buycar5.cn/20210412/EOwKfgwt/index.m3u8#第11集$https://vod3.buycar5.cn/20210412/xRT9FEjR/index.m3u8#第12集$https://vod3.buycar5.cn/20210412/Q6krcXYC/index.m3u8"
+        public String vod_play_url; //: "第01集$<播放地址>#第02集$<播放地址>…（多条线路用 $$$ 分隔，$ 前为集名/标题）"
         public String vod_plot; //: 0
         public String vod_plot_detail; //: ""
         public String vod_plot_name; //: ""

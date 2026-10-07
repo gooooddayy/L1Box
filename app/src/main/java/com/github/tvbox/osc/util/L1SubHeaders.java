@@ -7,7 +7,7 @@ package com.github.tvbox.osc.util;
  * "同一地址添加时失败、启用时反而成功"这种自相矛盾的表现。这里收敛成一份常量表，
  * 调用方只取用、不再各自拼装。
  *
- * 其中 Referer 是这次新加的一项：部分源站开了防盗链，缺 Referer 直接 403。
+ * 其中 Referer 是这次新加的一项：部分站点会校验请求来源，缺失时直接拒绝。
  * 拿不到可靠的 Referer 时宁可不带这个头，也不要硬填一个错的（错的比没有更容易被拒）。
  *
  * 纯字符串处理，不依赖 Android —— 可用桌面 JVM 跑用例表验证。
@@ -26,7 +26,7 @@ public class L1SubHeaders {
     public static final String CACHE_CONTROL = "no-cache";
 
     /**
-     * 以源站根地址作 Referer（防盗链最常见的判据就是"Referer 得是我自己的域名"）。
+     * 以源站根地址作 Referer（只取 scheme://host[:port]）。
      * 只取 scheme://host[:port]，丢弃路径与查询：路径里常带 token，透传出去既无必要也多余。
      * 拿不到 scheme 就返回 null —— 调用方不加这个头。
      */

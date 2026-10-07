@@ -713,7 +713,7 @@ public class SourceViewModel extends ViewModel {
                 public void run() {
                     Spider sp = ApiConfig.get().getCSP(sourceBean);
                     try {
-                        String json = sp.playerContent(playFlag, url, ApiConfig.get().getVipParseFlags());
+                        String json = sp.playerContent(playFlag, url, ApiConfig.get().getParseFlags());
                         JSONObject result = new JSONObject(json);
                         result.put("key", url);
                         result.put("proKey", progressKey);

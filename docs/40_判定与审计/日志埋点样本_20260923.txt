@@ -116,7 +116,7 @@
     - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
     - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
-    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
 - **DoH_STAT** 样本：
     - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
     - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
@@ -236,7 +236,7 @@
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
-    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
     - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：
@@ -411,7 +411,7 @@
     - `09-22 17:45:34.968 E/SQLiteDatabase(13054): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
     - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
-    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
 - **DoH_STAT** 样本：
     - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
     - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
@@ -443,7 +443,7 @@
     - `09-22 17:50:47.963 I/System.out(16491): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
 - **DoH_FAIL** 样本：
     - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
-    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
 - **DoH_STAT** 样本：
     - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
     - `09-22 17:45:48.929 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=59ms 总耗时=2233ms 本轮装载增量=1 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=10`
@@ -475,7 +475,7 @@
     - `09-22 17:50:47.963 I/System.out(16491): 搜索收尾：0 结果且判定为真空（站点池定论=false jar装载序号=0->0 自动重搜=2），给出空态`
 - **DoH_FAIL** 样本：
     - `09-22 17:47:58.798 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
-    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：api.6a7nnf7.com 原因=UnknownHostException`
+    - `09-22 17:47:59.186 W/L1Dns   (15258): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 17:56:47.292 W/L1Dns   (18185): DoH 失败，已回退系统DNS：api.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：
     - `09-22 17:45:39.949 I/System.out(13054): 搜索耗时：收尾 站点=40 命中=244 首条=2235ms 总耗时=11473ms 本轮装载增量=40 DNS(窗口内):DoH命中=0 失败=0 熔断跳过=0 直连=1104`
@@ -612,7 +612,7 @@
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
-    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
     - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：
@@ -641,7 +641,7 @@
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
-    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
     - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：
@@ -670,7 +670,7 @@
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
-    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
     - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：
@@ -699,7 +699,7 @@
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.github.tvbox.osc/databases/tv' with flags 0x1: File /data/user/0/com.github.tvbo`
     - `09-22 15:03:41.464 E/SQLiteDatabase(19035): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database`
 - **DoH_FAIL** 样本：
-    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：1851089669.cdn.123clouddisk.com 原因=UnknownHostException`
+    - `09-22 15:05:29.081 W/L1Dns   (21389): DoH 失败，已回退系统DNS：<源站地址> 原因=UnknownHostException`
     - `09-22 15:05:29.108 W/L1Dns   (21389): DoH 失败，已回退系统DNS：dns.alidns.com 原因=UnknownHostException`
     - `09-22 15:05:29.123 W/L1Dns   (21389): DoH 失败，已回退系统DNS：sdapi.<订阅源A>.com 原因=UnknownHostException`
 - **DoH_STAT** 样本：

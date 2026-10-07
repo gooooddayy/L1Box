@@ -176,12 +176,8 @@ public class SubtitleLoader {
     private static SubtitleLoadSuccessResult loadFromRemote(final String remoteSubtitlePath)
             throws IOException, FatalParsingException, Exception {
         Log.d(TAG, "parseRemote: remoteSubtitlePath = " + remoteSubtitlePath);
+        // 不针对特定第三方站点构造请求头：只做通用远程字幕下载
         String referer = "";
-        if (remoteSubtitlePath.contains("alicloud") || remoteSubtitlePath.contains("aliyundrive")) {
-            referer = "https://www.aliyundrive.com/";
-        } else if (remoteSubtitlePath.contains("assrt.net")) {
-            referer = "https://secure.assrt.net/";
-        }
         String ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.54 Safari/537.36";
         Response response = OkGo.<String>get(remoteSubtitlePath)
                 .headers("Referer", referer)

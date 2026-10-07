@@ -639,7 +639,7 @@ public class RemoteServer extends NanoHTTPD {
             // 而清单 URL 就是本机/局域网转发端点 ⇒ 补出来是 `http://127.0.0.1:9978/<分片名>` ⇒
             // 本机没有这个路径 ⇒ NanoHTTPD 回 HTML 首页 ⇒ FFmpeg 在 open 阶段读到 HTML ⇒
             // `AVERROR_INVALIDDATA`（status=-1094995529）⇒ 弹「无法播放」，197ms~1.8s 就死。
-            // 重写之后每个分片都是**绝对地址且仍走转发**（请求头不丢）—— 既不猜 base，也不丢防盗链头。
+            // 重写之后每个分片都是**绝对地址且仍走转发**（请求头不丢）—— 既不猜 base，也不丢来源请求头。
             // 只在 `200 ∧ 无 Content-Range ∧ 长度已知且不超上限` 时做：206 带 Range 语义，改了字节账对不上。
             if (code == 200 && cr == null && len >= 0 && len <= M3U8_MAX_BYTES && isM3u8(mime, u)) {
                 byte[] raw = readAll(body, (int) len);

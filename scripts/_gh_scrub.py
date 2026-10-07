@@ -12,23 +12,23 @@ APPLY = '--apply' in sys.argv
 
 # 订阅/接口域名映射（保持可区分，但不暴露真名）
 HOST_MAP = {
-    'api.<订阅源A>.com':   'api.<订阅源A>.com',
-    'sdapi.<订阅源A>.com': 'sdapi.<订阅源A>.com',
-    'api.<订阅源B>.com':   'api.<订阅源B>.com',
-    'api.<订阅源B>.com':  'api.<订阅源B>.com',
-    'upload.<订阅源C>.cn': 'upload.<订阅源C>.cn',
-    'tv.<订阅源C>.top':        'tv.<订阅源C>.top',
+    'api.rmedphk.com':   'api.<订阅源A>.com',
+    'sdapi.e2wu4ht.com': 'sdapi.<订阅源A>.com',
+    'api.umygrx3.com':   'api.<订阅源B>.com',
+    'api.w32z7vtd.com':  'api.<订阅源B>.com',
+    'upload.baicanuc.cn': 'upload.<订阅源C>.cn',
+    'tv.nxog.top':        'tv.<订阅源C>.top',
 }
 
 # 精确串替换
 LITERAL = [
-    ('<设备序列号>', '<设备序列号>'),
-    ('测试机', '测试机'),
-    ('<工作区>', '<工作区>'),
-    ('<本机>/WorkBuddy\\2026-08-19-14-43-05', '<工作区>'),
-    ('<本机>/.workbuddy', '<本机>/.workbuddy'),
-    ('<本机>/.workbuddy', '<本机>\\.workbuddy'),
-    ('<本机>/.gradle', '<本机>/.gradle'),
+    ('8d88c676', '<设备序列号>'),
+    ('PJE110', '测试机'),
+    ('C:/Users/Administrator/WorkBuddy/2026-08-19-14-43-05', '<工作区>'),
+    ('C:\\Users\\Administrator\\WorkBuddy\\2026-08-19-14-43-05', '<工作区>'),
+    ('C:/Users/Administrator/.workbuddy', '<本机>/.workbuddy'),
+    ('C:\\Users\\Administrator\\.workbuddy', '<本机>\\.workbuddy'),
+    ('C:/Users/Administrator/.gradle', '<本机>/.gradle'),
 ]
 LITERAL += list(HOST_MAP.items())
 
@@ -37,7 +37,7 @@ REGEX = [
     (re.compile(r'192\.168\.\d{1,3}\.\d{1,3}'), '192.168.x.x'),
     # 通用整机路径：任何盘符 + Users\<用户名>（覆盖根目录配置文件，LITERAL 只列了固定两处工作区前缀）
     (re.compile(r'[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}[A-Za-z0-9_.\-]+[\\/]{1,2}'), '<本机>/'),
-    # Gradle properties 的**转义形态**：反斜杠写作 `\\`、冒号写作 `\:`（形如 `<本机>/`）。
+    # Gradle properties 的**转义形态**：反斜杠写作 `\\`、冒号写作 `\:`（形如 `C\:\\Users\\X\\`）。
     # 上一条要求盘符后紧跟 `:`，因此**匹配不到**这种形态 —— 实测漏网 `gradle.properties` 的
     # `org.gradle.java.home`（2026-09-29 修过一次、09-30 同步时又带回，属重复踩坑）。
     # 危害双重：① 泄露本机账号/工作区路径 ② clone 者构建因路径不存在而失败。
@@ -46,9 +46,29 @@ REGEX = [
     (re.compile(r'C:[\\/]Users[\\/][A-Za-z0-9_.\-]+[\\/]'), '<本机>/'),
     # Windows 路径里出现的 "AppData/Local/Android/Sdk" 之类别名保留，只抹用户名
     (re.compile(r'\b49\.233\.180\.127:880/zm3u8/[0-9a-f]+'), '<订阅接口地址已隐去>'),
-    # 原为一条私有网盘下载地址的正则，换机后按需填回你自己的域名
-    # (re.compile(r'download01\.<私有网盘域名>/download/[0-9a-f]+'), '<下载地址已隐去>'),
+    (re.compile(r'download01\.fangcloud\.com/download/[0-9a-f]+'), '<下载地址已隐去>'),
     (re.compile(r'https?://[^\s`"\'<>)\]]*\.rdt\.t[^\s`"\'<>)\]]*'), '<链接已隐去>'),
+
+    # ── 2026-10-07 公开前合规：源站名（固定映射，保证跨文档一致）/ 公网 IP / CDN 域名 ──
+    (re.compile(r'<站点名A>|<别名A>'), '<站点A>'),
+    (re.compile(r'<站点名B>|<别名B>'), '<站点B>'),
+    (re.compile(r'<站点名C>'), '<站点C>'),
+    (re.compile(r'<站点名D>'), '<站点D>'),
+    (re.compile(r'<站点名E>|<别名E>'), '<站点E>'),
+    (re.compile(r'<站点名F>'), '<站点F>'),
+    (re.compile(r'<站点名G>'), '<站点G>'),
+    (re.compile(r'<站点名H>|<别名H>'), '<站点H>'),
+    (re.compile(r'<站点名I>'), '<站点I>'),
+    # 公网 IP（保留 127.0.0.1 本机代理与 192.168.x 内网）
+    (re.compile(r'https?://(?!(?:127\.0\.0\.1|192\.168\.))(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?'), '<源站地址>'),
+    # 测试中出现的 CDN / 源站域名
+    (re.compile(r'[a-z0-9\-]+\.(?:ssrcdn|ssscdn|feifei-kan|dbokutv)\.com'), '<源站域名>'),
+    (re.compile(r'[a-z0-9\-]+\.eos-[a-z0-9\-]+\.cmecloud\.cn'), '<源站域名>'),
+
+    # ── 测试中出现的源站/图床/CDN/平台地址（明确列表，保留 github/douban/baidu/DNS 等公开域名）──
+    (re.compile(r'[a-z0-9\-\.]*\.?(?:hxx2023\.cc|ruxiangsuisu\.cn|jundie\.top|wmvbo\.com|123clouddisk\.com|6a7nnf7\.com|jdyx\.pro|ffzy-play[a-z0-9]*\.com|ffzy-online\.com|skzs\.com|xhscdn\.com|bytetos\.com|gejiba\.com|waimaimingtang\.com|kstor[a-z]*\.vip|play-cdn[0-9]*\.com|hkybqufgh\.com|capcutvod\.com|ssrcdn\.com|ssscdn\.com|icve\.com\.cn|fffg[a-z]*d\.com|fangcloud\.com|moji\.com|4thline\.org|iqiyi\.com)'), '<源站地址>'),
+
+    (re.compile(r'<站点名J>[A-Za-z0-9]+'), '<站点J>'),
 ]
 
 # 全仓库脱敏白名单目录（源码 app/ player/ quickjs/ 等一律排除，必须与出包 APK 逐字节一致）

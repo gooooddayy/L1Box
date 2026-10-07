@@ -48,7 +48,7 @@ public final class MyOkhttpDownLoader implements Downloader {
     // 只统计走网络的下载（内存/磁盘缓存命中不经过这里，也不算失败）。
     // 用户关心的是"图片到底能不能加载出来"，并怀疑是 DNS 拦截 —— 所以账本必须分开记：
     //   ①未知主机（UnknownHostException，就是 DNS 解析失败/被拦截）
-    //   ②连接/读取超时 ③连接失败 ④TLS/证书 ⑤HTTP 状态码（403 防盗链等）
+    //   ②连接/读取超时 ③连接失败 ④TLS/证书 ⑤HTTP 状态码（403 等）
     // 有了分类才能定刀：DNS 类要查域名解析，HTTP 类才轮到补 Referer/UA。
     private static final AtomicInteger IMG_OK = new AtomicInteger();
     private static final ConcurrentHashMap<String, AtomicInteger> IMG_FAIL = new ConcurrentHashMap<>();
@@ -237,7 +237,7 @@ public final class MyOkhttpDownLoader implements Downloader {
         } finally {
             L1ImageInflight.remove(url);
         }
-        // 非 2xx（403 防盗链 / 404 等）Picasso 按失败处理，这里按 HTTP 状态码记账
+        // 非 2xx（403 / 404 等）Picasso 按失败处理，这里按 HTTP 状态码记账
         if (!response.isSuccessful()) {
             countFail(counted.url().host(), "HTTP" + response.code());
         } else {

@@ -110,7 +110,7 @@ public class ApiConfig {
     private ParseBean mDefaultParse;
     private List<LiveChannelGroup> liveChannelGroupList;
     private List<ParseBean> parseBeanList;
-    private List<String> vipParseFlags;
+    private List<String> parseFlags;
     private List<IJKCode> ijkCodes;
     private String spider = null;
     public String wallpaper = "";
@@ -240,7 +240,7 @@ public class ApiConfig {
                 sourceBeanList.clear();
                 spider = "";
                 parseBeanList.clear();
-                vipParseFlags = new ArrayList<>();
+                parseFlags = new ArrayList<>();
             }
             mHomeSource = null;
             // 无订阅是明确结论：站点池为空属正常空态，搜索入口应立即给空态而不是等待
@@ -337,7 +337,8 @@ public class ApiConfig {
                                      LoadConfigCallback callback, Activity activity, final int attempt) {
         OkGo.<String>get(configUrl)
                 // 订阅抓取的请求头统一取自 L1SubHeaders（与"添加订阅"那一段共用同一套）：
-                // UA/Accept 之外补了 Accept-Language、Cache-Control 与防盗链用的 Referer。
+                // UA/Accept 之外补了 Accept-Language、Cache-Control 与来源 Referer
+                // （用于按资源来源补充常规请求头，例如加载公开的节目图片）。
                 .headers(OkGoHelper.subHeaders(configUrl))
                 .execute(new AbsCallback<String>() {
                     @Override
@@ -806,8 +807,8 @@ public class ApiConfig {
             else
                 setSourceBean(sh);
         }
-        // 需要使用vip解析的flag
-        vipParseFlags = DefaultConfig.safeJsonStringList(infoJson, "flags");
+        // 站点标记位（来自订阅配置，交由 spider 处理播放地址）
+        parseFlags = DefaultConfig.safeJsonStringList(infoJson, "flags");
         // 解析地址
         // 解析地址（防缺字段/类型不符导致加载订阅源闪退）
         parseBeanList.clear();
@@ -1266,8 +1267,8 @@ public class ApiConfig {
         return parseBeanList;
     }
 
-    public List<String> getVipParseFlags() {
-        return vipParseFlags;
+    public List<String> getParseFlags() {
+        return parseFlags;
     }
 
     public SourceBean getHomeSourceBean() {

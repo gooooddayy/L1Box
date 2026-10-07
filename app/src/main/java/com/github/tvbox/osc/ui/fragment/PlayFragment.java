@@ -613,7 +613,7 @@ public class PlayFragment extends BaseLazyFragment {
                 if (mPlayStartedAt > 0 && mPlayStartedAt == mFailHandledAt) return;
                 mFailHandledAt = mPlayStartedAt;
                 // I1（2026-09-28）：内核错误码归因 —— 只写埋点，不改变任何判定行为。
-                // "很多源直接播放失败"此前无法分类（403 防盗链/404/解码/超时全走同一条链），二期按此分布定刀。
+                // "很多源直接播放失败"此前无法分类（403/404/解码/超时全走同一条链），二期按此分布定刀。
                 String errDesc = PlayErrCode.take();
                 String errClass = PlayErrCode.classify(errDesc);
                 // I2：同一 URL 上同类错误已完整走过一轮变形/降级 ⇒ 链路重走必然空转，直接到重取档
@@ -1236,7 +1236,7 @@ public class PlayFragment extends BaseLazyFragment {
      *
      * dd 轮实测暴露的缺口（2026-09-28）：原来只打异常**类名**，于是 `HttpException` 把
      * 403 / 404 / 502 三种完全不同的情况混成了一个字符串 —— 而它们的修法毫无共通之处
-     * （403＝防盗链，补请求头/Referer/UA；404＝地址已失效，重取无意义；5xx＝源站问题）。
+     * （403＝访问被拒；404＝地址已失效，重取无意义；5xx＝源站问题）。
      * 现在把**状态码**打出来，也把超时/连接失败/DNS 分开。
      *
      * 同时区分"本机代理地址"与"远端地址"：本机代理没起来时，那个地址播多少次都不会成功。
@@ -1802,7 +1802,7 @@ public class PlayFragment extends BaseLazyFragment {
                         }
                     }
                     if (parse || jx) {
-                        boolean userJxList = (playUrl.isEmpty() && ApiConfig.get().getVipParseFlags().contains(flag)) || jx;
+                        boolean userJxList = (playUrl.isEmpty() && ApiConfig.get().getParseFlags().contains(flag)) || jx;
                         PlayTrace.stage("取链", "走解析 flag=" + flag + " jx=" + jx + " 用户解析=" + userJxList);
                         initParse(flag, userJxList, playUrl, url);
                     } else {

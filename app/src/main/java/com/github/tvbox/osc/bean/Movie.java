@@ -78,7 +78,7 @@ public class Movie implements Serializable {
             public static class UrlInfo implements Serializable {
                 @XStreamAsAttribute
                 public String flag;//zuidam3u8,zuidall(MP4)
-                // <![CDATA[第01集$http://video.zuidajiexi.com/20170825/txpkmcnK/index.m3u8#第02集$http://video.zuidajiexi.com/20170825/YOApVCHc/index.m3u8]]
+                // urls 格式：第01集$<播放地址>#第02集$<播放地址>（多集以 # 分隔）
                 public String urls;
                 public List<InfoBean> beanList;
 

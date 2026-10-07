@@ -15,7 +15,7 @@ import sys
 import zipfile
 
 APK = sys.argv[1] if len(sys.argv) > 1 else \
-    r"FreeBox-src/L1Box_v1.1.1_release_20260930cu.apk"
+    r"FreeBox-src/L1Box_v1.1.1_release_20260930cv.apk"
 
 # (批号, 符号, 类别)
 CHECKS = [

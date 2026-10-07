@@ -22,7 +22,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-ROOT = Path(r"<工作区>")
+ROOT = Path(r"C:\Users\Administrator\WorkBuddy\2026-08-19-14-43-05")
 REPO_DIR = ROOT / "_gh_upload_L1Box"
 CACHE = ROOT / "_gh_api_blobs.json"
 OWNER, REPO = "gooooddayy", "L1Box"
