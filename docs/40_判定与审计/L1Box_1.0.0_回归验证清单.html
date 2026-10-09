@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>L1Box 1.0.0 回归验证清单</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --line:#e6e9ee; --ink:#1b1f26; --dim:#6b7480;
+  --acc:#2f6df6; --ok:#12a150; --okbg:#e8f8ef; --bad:#d9372b; --badbg:#fdecea;
+  --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  padding-bottom:80px;
+}
+header{
+  position:sticky; top:0; z-index:20;
+  background:rgba(246,247,249,.86); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line); padding:16px 22px 12px;
+}
+.h1{font-size:17px;font-weight:650;letter-spacing:.2px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.h1 .tag{font-size:11.5px;font-weight:500;color:var(--dim);background:#eceff4;border-radius:6px;padding:2px 7px}
+.meta{margin-top:5px;font-size:12px;color:var(--dim);font-family:ui-monospace,Consolas,monospace}
+.bar{height:7px;border-radius:99px;background:#e4e8ee;overflow:hidden;margin-top:11px}
+.bar>i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#2f6df6,#12a150);
+  transition:width .45s cubic-bezier(.22,1,.36,1)}
+.stats{display:flex;gap:16px;margin-top:9px;font-size:12.5px;align-items:center;flex-wrap:wrap}
+.stats b{font-weight:600}
+.s-ok{color:var(--ok)} .s-bad{color:var(--bad)} .s-dim{color:var(--dim)}
+#reset{margin-left:auto;font:inherit;font-size:12px;color:var(--dim);background:#fff;
+  border:1px solid var(--line);border-radius:8px;padding:5px 12px;cursor:pointer;transition:.18s}
+#reset:hover{color:var(--bad);border-color:#f2c9c4;background:#fff8f7}
+main{max-width:880px;margin:0 auto;padding:22px}
+section{margin-bottom:26px}
+.ghead{display:flex;align-items:center;gap:9px;margin:0 0 12px;padding-left:2px}
+.ghead .badge{
+  width:23px;height:23px;border-radius:7px;display:grid;place-items:center;
+  font-size:12.5px;font-weight:700;color:#fff;background:var(--acc);flex:none}
+section.static .ghead .badge{background:var(--ok)}
+.ghead h2{font-size:14.5px;margin:0;font-weight:650}
+.ghead p{margin:0;font-size:12px;color:var(--dim);flex:1 1 100%;padding-left:32px;margin-top:-4px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px 13px;margin-bottom:10px;position:relative;overflow:hidden;
+  transition:border-color .22s,box-shadow .22s,transform .22s;
+}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--line);transition:background .22s}
+.card:hover{box-shadow:0 2px 12px rgba(27,31,38,.05)}
+.card.pass{border-color:#c6ead6} .card.pass::before{background:var(--ok)}
+.card.fail{border-color:#f3cbc6} .card.fail::before{background:var(--bad)}
+.ctop{display:flex;align-items:flex-start;gap:11px}
+.id{font:600 12px/20px ui-monospace,Consolas,monospace;color:var(--dim);
+  background:#eef1f6;border-radius:6px;padding:0 7px;flex:none;margin-top:1px;
+  transition:.22s}
+.card.pass .id{background:var(--okbg);color:var(--ok)}
+.card.fail .id{background:var(--badbg);color:var(--bad)}
+.ctitle{font-size:14.5px;font-weight:600;flex:1;margin-top:1px}
+.pick{display:flex;gap:6px;flex:none}
+.pick button{
+  font:inherit;font-size:12px;padding:4px 11px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--dim);
+  transition:transform .14s,background .18s,color .18s,border-color .18s;
+}
+.pick button:active{transform:scale(.94)}
+.pick button[data-on="pass"].on{background:var(--ok);border-color:var(--ok);color:#fff}
+.pick button[data-on="fail"].on{background:var(--bad);border-color:var(--bad);color:#fff}
+.body{margin-top:9px;padding-left:0}
+.row{display:flex;gap:8px;font-size:13.2px;margin-top:5px;align-items:baseline}
+.row .k{flex:none;color:var(--dim);font-size:12px;min-width:46px}
+.row .v{flex:1}
+.card .why{color:var(--dim);font-size:12.4px;margin-top:2px}
+.expect{background:#f4f7fb;border-radius:9px;padding:8px 11px;margin-top:9px;font-size:13px}
+.expect .k{color:var(--acc);font-weight:600;font-size:12px}
+.expect ul{margin:4px 0 0;padding-left:17px}
+.expect li{margin:1px 0}
+.note{margin-top:9px}
+.note input{
+  width:100%;font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:9px;background:#fbfcfd;color:var(--ink);outline:none;transition:.18s}
+.note input:focus{border-color:var(--acc);background:#fff;box-shadow:0 0 0 3px rgba(47,109,246,.09)}
+.card-static{display:flex;gap:10px;align-items:flex-start;font-size:13.3px;
+  padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+.card-static .ck{color:var(--ok);flex:none;font-weight:700}
+footer{max-width:880px;margin:0 auto;padding:8px 22px 0;font-size:12px;color:var(--dim)}
+.anim{animation:pop .34s cubic-bezier(.22,1,.36,1)}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.012)}100%{transform:scale(1)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h1">L1Box <span>回归验证清单</span>
+    <span class="tag" id="tagline">1.0.0 · 公开版</span>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div class="bar"><i id="pbar"></i></div>
+  <div class="stats">
+    <span class="s-dim">已判 <b id="n-done">0</b>/<b id="n-total">0</b></span>
+    <span class="s-ok">通过 <b id="n-ok">0</b></span>
+    <span class="s-bad">失败 <b id="n-bad">0</b></span>
+    <button id="reset">清空重测</button>
+  </div>
+</header>
+
+<main id="app"></main>
+<footer>判定结果自动保存在本机浏览器，关掉再打开还在。全部测完把失败项告诉我即可。</footer>
+
+<script>
+const GROUPS = [
+  {
+    k:'A', cls:'', title:'合规改动的直接功能面',
+    desc:'公开前清理正好动到这几处代码，必须逐项实测（这是「会不会影响现有功能」的答案所在）',
+    items:[
+      {id:'A1', t:'冷启动不闪退（节目单数据清空）',
+       why:'内置节目单数据由 91KB 清成空数组，App 启动时会在后台解析它。',
+       steps:'彻底杀掉进程 → 重新打开 App → 停在首页 10 秒。',
+       expect:['正常进入首页，不闪退','不出现长时间白屏或卡死']},
+      {id:'A2', t:'首页顶部展示正常（默认 logo 清空）',
+       why:'默认配置里指向第三方图床的 logo 已置空。',
+       steps:'看首页顶部区域，再滑一下分类栏。',
+       expect:['无裂图、无异常空白','标题与内容区排版正常']},
+      {id:'A3', t:'搜索输入不再有联想与评分',
+       why:'输入联想与评分整条链路已移除（用户 10-07 决定不要）：不再请求任何联想接口，页面也不再出现任何评分。',
+       steps:'进搜索页 → 输入一个常见片名（如「庆余年」）→ 看输入框下方；再长按一条搜索结果。',
+       expect:['输入时不再弹出任何联想词列表，也不弹评分框','仍能正常输入，点搜索键能正常发起搜索','长按搜索结果无反应','热门搜索与搜索历史仍正常显示、可点可用']},
+      {id:'A4', t:'在线字幕入口（第三方字幕源已移除）',
+       why:'三个在线字幕请求入口已改为安全空实现（返回空列表），不再请求任何外部字幕站。',
+       steps:'播放任意能播的影片 → 打开字幕 / 选择字幕入口。',
+       expect:['菜单能正常打开，不闪退','在线字幕列表为空属预期（本机字幕文件仍可用）']},
+      {id:'A5', t:'详情页 / 首页各按钮点了不崩（网盘接口库已删）',
+       why:'内置的网盘接口封装库已删除，相关分支一并清理。',
+       steps:'在首页和影片详情页，把常用按钮（分享、推送、更多菜单等）点一遍。',
+       expect:['全部不闪退','不出现「点一下整个页面崩掉」']}
+    ]
+  },
+  {
+    k:'B', cls:'', title:'核心链路回归',
+    desc:'这些逻辑本次没被改动，测一遍只为确认没有被误伤',
+    items:[
+      {id:'B1', t:'订阅源加载', why:'首页能否正常拉取并展示已配置的订阅源内容。',
+       steps:'打开 App，等首页加载完成。',
+       expect:['订阅源内容正常展示','无长时间空列表']},
+      {id:'B2', t:'全站搜索', why:'搜索结果收敛链路。',
+       steps:'搜一个词，等收尾完成；左栏切几个站点。',
+       expect:['能出结果，左右栏都在动','收尾后结果保留，切站点能看对应结果']},
+      {id:'B3', t:'起播与选集', why:'播放主链路。',
+       steps:'任选一部影片播放，切一集。',
+       expect:['能正常起播','选集切换正常']},
+      {id:'B4', t:'播放设置项（含解析相关开关）', why:'`vipParseFlags` 改名成 `parseFlags`，属纯重命名，编译期已验证；这里确认设置页能正常打开。',
+       steps:'播放页 → 设置 / 更多，逐项打开。',
+       expect:['各设置项能打开、能改，不闪退']},
+      {id:'B5', t:'图片加载', why:'海报图链路。',
+       steps:'搜索出结果后看海报。',
+       expect:['海报正常显示','不长期空白转圈']},
+      {id:'B6', t:'左右滑动跟手', why:'此前几轮修好的左栏手势与右栏惯性，确认没被带回去。',
+       steps:'左栏滑动切换站点；右栏快速滑一下（接触时间短）。',
+       expect:['左栏滑动不丢手势、不乱跳','右栏快速滑动后有自然惯性（不会一碰就停）']},
+      {id:'B7', t:'设置页整体', why:'通用回归。',
+       steps:'进入设置页，各项进出几次。',
+       expect:['各项能进能开，改完不崩']}
+    ]
+  },
+  {
+    k:'C', cls:'static', title:'本轮改动专项：换源失败不再沿用前源',
+    desc:'db 版（2026-10-09）改的就是这一件事。C1 是本轮核心，C2 是必须确认"没被改坏"的旧特性',
+    items:[
+      {id:'C1', t:'换源到一个拉不通的地址 ⇒ 空源 + 提示（核心）',
+       why:'原先：换源失败后首页/搜索会**继续沿用前一个源**，界面却显示新源 —— "源明明坏了却像没问题"。现在：装载失败且地址变过 ⇒ 清掉前源池 ⇒ 空源 + 一句原因。',
+       steps:'订阅页 → 编辑当前启用那条订阅 → 把地址改成**拉不通**的（例如域名故意错一个字母）→ 返回首页，停在首页十几秒；再去搜索页搜一个词。',
+       expect:[
+         '装载期间首页仍显示原内容（不先空一下再出）—— 这是无间隔切换',
+         '失败后首页变空态，并出现「订阅加载失败，请检查源地址」',
+         '首页/搜索**不再出现前一个源**的内容（这就是本 bug 的核心）',
+         '搜索页弹出「订阅加载失败，请检查源地址」（带重试）']},
+      {id:'C2', t:'断网容错没被改坏（必须仍是好的）',
+       why:'"失败时沿用旧池"是断网容错，本轮刻意保留。地址没变时的加载失败**一行都没动**。',
+       steps:'源保持不动（不要改地址）→ 打开飞行模式 → 杀掉 App 重开，或下拉刷新一次。',
+       expect:['首页仍能看到上次的内容（不断档）','**不会**因为一次网络失败就变成空源']},
+      {id:'C3', t:'换源成功 ⇒ 无间隔 + 内容真的换成新源',
+       why:'确认另一条分支（装载成功）也正常。',
+       steps:'把地址改回可用源（或换成另一个可用源）→ 返回首页等装载完成。',
+       expect:['装载期间仍显示原内容，不出现空白窗口','完成后首页内容来自新源']},
+      {id:'C4', t:'空态文案只在"配了源却失败"时出现',
+       why:'避免把"真没配源"也显示成失败，那样会误导。',
+       steps:'订阅页把启用项全部关掉（或删掉）→ 回首页。',
+       expect:['只显示「添加订阅源」按钮','**不出现**「订阅加载失败，请检查源地址」那句']}
+    ]
+  },
+  {
+    k:'D', cls:'static', title:'dc 专项：带注释的源能用了 + 搜索页不再永久转圈',
+    desc:'这两条都是老缺陷，db 让它们显形；dc 把它们修掉。D1 直接关系解析成功率',
+    items:[
+      {id:'D1', t:'带 // 行注释的订阅源能正常加载了（成功率核心）',
+       why:'原先把换行一起删掉，导致 `//` 行注释失去行尾边界，**整类配置被误判成"内容不是订阅配置"**。dc 已改为保留换行并安全删除行注释。',
+       steps:'订阅页 → 添加/编辑一个**带行注释**的订阅（可用这个真实配置测）：\nhttps://fastly.jsdelivr.net/gh/xyq254245/xyqonlinerule@main/XYQTVBox.json\n加好后返回首页等它加载；也可以直接搜一个词看有没有站点参与搜索。',
+       expect:[
+         '首页能顺利加载出内容（该配置含很多站点），不再提示「订阅内容异常：返回的内容不是订阅配置」',
+         '搜索能出结果（说明站点池确实被装进来了）']},
+      {id:'D2', t:'换源失败后，搜索页不再永久转圈',
+       why:'原来 SUB_FAIL 态不在任何探池节拍里，对话框「取消」又只把对话框藏掉、没有任何出口 ⇒ 永久停在加载中。',
+       steps:'订阅页改成**拉不通**的地址 → 返回（首页会变空态）→ 进搜索页搜一个词 → 等对话框出现后点「取消」。',
+       expect:[
+         '点「取消」后出现空态，并提示「订阅加载失败，请检查源地址」',
+         '**不再一直转圈**（原先是永久转圈，只能返回上一页）']},
+      {id:'D3', t:'切回可用源后，搜索页自动恢复（本轮 de 修的就是它）',
+       why:'上一版只有点「取消」才会启动探池 —— 点「重试」、直接返回、或不理那个对话框，都会留下一个"没有任何东西驱动"的死态，池恢复了界面还停在加载中（你实测到的就是这条）。de 改成**进入这个状态就排探池**，并给"返回搜索页"加了兜底。',
+       steps:'承 D2（此刻搜索页是失败态）→ 回订阅页把地址改回可用源 → 回到搜索页，等几秒（**不要再点搜索**）。\n再补测一次上一版会卡住的那条：把地址改成拉不通的 → 进搜索页 → 对话框出现后点「重试」 → 再改回可用源 → 返回搜索页。',
+       expect:['搜索**自动开始**并出结果，不必手动再搜一次',
+               '若此时还挂着失败对话框，它会**自动消失**（池好了就不该继续显示失败）',
+               '补测那条（走「重试」的路径）同样能自动恢复 —— 这是上一版必然卡住的地方']},
+      {id:'D4', t:'来回切源，好源不能被"带坏"（成功率核心）',
+       why:'dd 修的就是这个：装载失败会退避重试（横跨约 4.5 秒），期间你若切走，那个**被放弃地址的迟到失败**会把**当前好源已经装好的池**清掉 —— 表现就是"这个源本来能用，忽然不能用了"。',
+       steps:'启用一个可用源 → 确认首页能加载、能搜 → 切到一个**拉不通**的地址 → 等几秒 → 再切回那个可用源 → 重复 2~3 次。',
+       expect:[
+         '每次切回可用源后，首页都能正常加载、搜索都能出结果',
+         '**不出现**"好源忽然变空 / 显示订阅加载失败"',
+         '日志里只会看到「忽略迟到的装载失败 地址=… 当前地址=…（不清池/不报错）」，不应出现「清空前源站点池」带的是当前可用源']}
+    ]
+  }
+];
+
+const STATIC = [
+  '构建闸门 954 条断言全过（0 失败；de 新增 5 条钉住"探池节拍必须始终在跑"）',
+  'dex 符号校验 193 条全过（0 失败；dd 192 → +1 为本轮新增）',
+  '差异对照 dd→de：1087/1092 文件逐字节未变，类符号 0 增 0 删，字符串消失 0 / 新增 1（零疑点）',
+  '真机日志实证（19:40）：池在 19:40:31 已恢复，而全窗口「SUB_FAIL 期间订阅已恢复」出现 0 次 ⇒ 探池节拍从未启动（已修）',
+  '结构约束：探池节拍四条路径全排（进入该态／续排／用户出口／返回本页），onResume 覆写被限制为唯一一处且必须条件化',
+  '对外版本名 1.0.0：界面「我的」页显示 v1.0.0；versionCode 保持 31 ⇒ 直接覆盖升级，已配订阅源不丢',
+  '装机后设备端 APK 与本地 MD5 逐字节一致（95c98149…）'
+];
+
+const KEY='l1box_de_checklist_v1';
+const META='L1Box_v1.0.0_release_20261009de.apk ｜ 60,813,878 B ｜ MD5 95c98149d6d6c6195e6935b6472eba16 ｜ 装机 2026-10-09 20:02';
+let S = JSON.parse(localStorage.getItem(KEY) || '{}');
+
+const app = document.getElementById('app');
+const ITEMS = [];
+
+GROUPS.forEach(g=>{
+  const sec = document.createElement('section');
+  sec.className = 'static'===g.cls ? 'static' : '';
+  sec.innerHTML = `<div class="ghead"><span class="badge">${g.k}</span><h2>${g.title}</h2>
+    <p>${g.desc}</p></div>`;
+  g.items.forEach(it=>{
+    ITEMS.push(it.id);
+    const c = document.createElement('div');
+    c.className='card'; c.dataset.id=it.id;
+    c.innerHTML = `
+      <div class="ctop">
+        <span class="id">${it.id}</span>
+        <span class="ctitle">${it.t}</span>
+        <span class="pick">
+          <button data-on="pass">通过</button>
+          <button data-on="fail">失败</button>
+        </span>
+      </div>
+      <div class="why">${it.why}</div>
+      <div class="row"><span class="k">怎么测</span><span class="v">${it.steps}</span></div>
+      <div class="expect"><span class="k">预期</span>
+        <ul>${it.expect.map(e=>`<li>${e}</li>`).join('')}</ul></div>
+      <div class="note"><input placeholder="备注（可留空）"></div>`;
+    c.querySelectorAll('.pick button').forEach(b=>{
+      b.onclick=()=>{
+        const on=b.dataset.on, rec=S[it.id]||{};
+        rec.state = rec.state===on ? null : on;
+        S[it.id]=rec; save(); paint();
+        c.classList.remove('anim'); void c.offsetWidth; c.classList.add('anim');
+      };
+    });
+    const inp=c.querySelector('input');
+    inp.value = (S[it.id]||{}).note || '';
+    inp.oninput = ()=>{ S[it.id]=S[it.id]||{}; S[it.id].note=inp.value; save(); };
+    sec.appendChild(c);
+  });
+  app.appendChild(sec);
+});
+
+const secS = document.createElement('section');
+secS.className='static';
+secS.innerHTML = `<div class="ghead"><span class="badge">C</span><h2>已静态验证通过</h2>
+  <p>构建期与装机阶段已用脚本取证，无需手测</p></div>` +
+  STATIC.map(s=>`<div class="card-static"><span class="ck">✓</span><span>${s}</span></div>`).join('');
+app.appendChild(secS);
+
+document.getElementById('meta').textContent = META;
+document.getElementById('n-total').textContent = ITEMS.length;
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+
+function paint(){
+  let ok=0,bad=0,done=0;
+  ITEMS.forEach(id=>{
+    const st=(S[id]||{}).state, card=document.querySelector(`.card[data-id="${id}"]`);
+    card.classList.toggle('pass', st==='pass');
+    card.classList.toggle('fail', st==='fail');
+    card.querySelectorAll('.pick button').forEach(b=>
+      b.classList.toggle('on', b.dataset.on===st));
+    if(st==='pass'){ok++;done++;} else if(st==='fail'){bad++;done++;}
+  });
+  document.getElementById('n-ok').textContent=ok;
+  document.getElementById('n-bad').textContent=bad;
+  document.getElementById('n-done').textContent=done;
+  document.getElementById('pbar').style.width=(done/ITEMS.length*100)+'%';
+}
+
+document.getElementById('reset').onclick=()=>{
+  if(!confirm('清空所有判定结果？')) return;
+  S={}; save();
+  document.querySelectorAll('.card input').forEach(i=>i.value='');
+  paint();
+};
+
+paint();
+</script>
+</body>
+</html>

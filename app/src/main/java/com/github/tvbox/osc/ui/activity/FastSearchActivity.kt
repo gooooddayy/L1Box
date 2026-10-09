@@ -978,6 +978,13 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             onGuardTick()
             return
         }
+        // dc（2026-10-09）：SUB_FAIL 也必须被节拍驱动。
+        // 原来它不在任何节拍里，而「取消」只是把对话框藏掉 ⇒ phase 仍是 SUB_FAIL、又不排定时任务
+        // ⇒ **页面永久停在加载中**（真机 17:34 复现：只能返回上一页）。
+        if (phase == Phase.SUB_FAIL) {
+            onSubFailTick()
+            return
+        }
         // 只有 S1（池未定论）与 S3（本轮不可信、等池变化）需要探池。
         // 其它态收到迟到的节拍一律丢弃 —— 否则会在结果已经上屏之后又擅自发起一轮搜索。
         if (phase != Phase.S1 && phase != Phase.S3) return
@@ -2131,6 +2138,9 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
      *     这一支是"假空被结构性删除"的落点：只要池没定论，就永远到不了"暂无数据"。
      *  ② **池已定论 + 池里空的 + 本机有订阅地址** ＝ 订阅未加载成功 → 订阅失败单独成态。
      *     它和"订阅里没有站点"、以及"用户把站点全过滤掉了"是两回事，不能冒充空态。
+     *     （dc，2026-10-09：该态的**用户出口**见 {@link #exitSubFailToEmpty} ——
+     *      空态 + 一句原因 + 继续探池；池一恢复就自动重搜。此前「取消」只藏对话框，
+     *      没有任何出口 ⇒ 永久停在加载中。）
      *  ③ 其余（没配订阅 / 订阅里确实没有可搜站点 / 用户过滤导致全排除）→ **S4 诚实空态**。
      */
     private fun handleNoSearchableSite() {
@@ -2168,6 +2178,9 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         phase = Phase.SUB_FAIL
         // 保持转圈：此刻既不是"有结果"，也不是"结论已下"，界面不该给出任何结论
         showLoading()
+        // de（2026-10-09）：**进入这个态就排探池节拍**，不能等到用户点「取消」才排。
+        // 否则「重试 / 直接返回 / 不理对话框」三条路径都会留下一个无人驱动的死态。
+        scheduleSubFailTick()
         if (!subReloadTried) {
             subReloadTried = true
             System.out.println("搜索轮次：SUB_FAIL 同址重拉订阅 1 次（每启动最多 1 次）");
@@ -2175,6 +2188,63 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
             return
         }
         showSubFailDialog()
+    }
+
+    /**
+     * SUB_FAIL 态下的探池节拍（dc，2026-10-09；de 加严判据并补上对话框收尾）。
+     *
+     * 只做一件事：**订阅恢复就自动重搜**。纯内存读，零网络请求 —— 与 S1 的探池同一套代价。
+     * 订阅仍未恢复（地址还在、池还是空的）就继续等一拍，不判空也不弹窗：装载失败不是"暂无数据"，
+     * 见 {@link #handleNoSearchableSite} 的注释。
+     */
+    private fun onSubFailTick() {
+        // de：判据要多一条"池已定论"。只看池非空不够 —— 装载半途也可能短暂非空，
+        // 那会白搜一轮（搜到一半的池）并把界面推回 loading，反而制造"又卡住了"的观感。
+        if (ApiConfig.get().hasSubscription() && ApiConfig.get().isSitePoolSettled()) {
+            System.out.println("搜索轮次：SUB_FAIL 期间订阅已恢复 ⇒ 自动重搜")
+            // 自动恢复时顺手把失败对话框收掉：池都好了，界面上不该还挂着"订阅加载失败"
+            subFailDialog?.hide()
+            readyRetry = 0
+            showLoading()
+            searchResult(fromWaitingRetry = true)
+            return
+        }
+        if (hasSubUrl()) {
+            // 地址还在、池仍为空 ⇒ 订阅尚未装载成功：继续等（无上限）
+            scheduleSubFailTick()
+        }
+        // 地址也没了（用户把订阅删干净）⇒ 不再探池，停在空态即可
+    }
+
+    /**
+     * 排下一拍 SUB_FAIL 探池（de，2026-10-09）。**幂等**：先 remove 再 post。
+     *
+     * ⚠️ 为什么必须抽成方法、并且**进入这个态时就要调**：
+     * SUB_FAIL 是"**只由本定时任务驱动**"的状态 —— 它不在搜索主流程里，除了这一拍没有任何东西会推动它。
+     * dc 版把排任务只写在了「取消」出口，于是只要用户点的是「重试」、或直接返回再进来、或压根不理那个对话框，
+     * 任务就永远不会启动 ⇒ 池恢复后无人接管 ⇒ **页面永久停在加载中**（真机 19:40 实测复现）。
+     * 现在"进入该态 / 用户出口 / 返回本页"三条路径都保证排上，漏一条都不行。
+     */
+    private fun scheduleSubFailTick() {
+        if (isFinishing || isDestroyed) return
+        searchWatchdogHandler.removeCallbacks(waitTickRunnable)
+        searchWatchdogHandler.postDelayed(waitTickRunnable, READY_RETRY_DELAY_MS)
+    }
+
+    /**
+     * SUB_FAIL 的用户出口（dc，2026-10-09）：**显示空态 + 说明原因，并继续探池**。
+     *
+     * 为什么必须有它：原来对话框「取消」只 `hide()`，而 SUB_FAIL 不在任何节拍里
+     * ⇒ 界面永久停在加载中，用户唯一的出路是返回上一页。
+     *
+     * 为什么不只给空态：装载失败与"暂无数据"是两回事，所以额外给一句原因；
+     * 同时保持探池 —— 订阅恢复（换回可用源 / 网络回来）后**自动重新搜索**，不必让用户再搜一次。
+     */
+    private fun exitSubFailToEmpty() {
+        if (isFinishing || isDestroyed) return
+        showEmpty()
+        ToastUtils.showLong("订阅加载失败，请检查源地址")
+        scheduleSubFailTick()
     }
 
     /** 同址重拉订阅（地址取自 Hawk，一字不改）。自动路径受 subReloadTried 护栏，手动「重试」不受限。 */
@@ -2208,7 +2278,7 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
         if (isFinishing || isDestroyed) return
         if (subFailDialog != null && subFailDialog!!.isShowing) return
         if (subFailDialog == null) {
-            subFailDialog = TipDialog(this, "订阅没有加载出可用站点，请检查网络或订阅地址",
+            subFailDialog = TipDialog(this, "订阅加载失败，请检查源地址",
                 "重试", "取消", object : TipDialog.OnListener {
                     override fun left() {
                         subFailDialog?.hide()
@@ -2219,6 +2289,9 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
 
                     override fun right() {
                         subFailDialog?.hide()
+                        // dc（2026-10-09）：**这里必须有出口**。原来只 hide 对话框，phase 仍是 SUB_FAIL、
+                        // 又不排任何定时任务 ⇒ 页面永久停在"加载中"（真机 17:34 实测，只能返回上一页）。
+                        exitSubFailToEmpty()
                     }
 
                     override fun cancel() {}
@@ -2373,6 +2446,20 @@ class FastSearchActivity : BaseVbActivity<ActivityFastSearchBinding>(), TextWatc
 
     private fun cancel() {
         OkGo.getInstance().cancelTag("search")
+    }
+
+    /**
+     * de（2026-10-09）：回到本页时若仍停在「订阅未加载成功」，补排探池节拍。
+     *
+     * 覆盖最常见的自救路径 —— 用户在订阅页把地址改回可用源、然后返回搜索页。
+     * 这时池很可能已经在后台装载好了，但只要没有驱动就不会有人去搜（真机 19:40 的现象就是如此）。
+     */
+    override fun onResume() {
+        super.onResume()
+        // 只在失败态补：其它状态有自己的驱动（S1/S3 的节拍、S5 的补全守卫），不要多插一脚
+        if (phase == Phase.SUB_FAIL) {
+            scheduleSubFailTick()
+        }
     }
 
     override fun onDestroy() {

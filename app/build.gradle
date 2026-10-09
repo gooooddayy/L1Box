@@ -13,8 +13,12 @@ android {
         // 触发加固层自检失败自杀（日志铁证: Attempt to load writable dex file）。
         // 本应用为侧载分发不上架商店，28 是加固 jar 兼容性最优解。
         targetSdkVersion 28
+        // 对外版本号：Release 名、发布包名、以及界面「我的」页的版本显示（MyFragment 读的就是它）
+        // 三者都取自本字段，所以"改对外版本"只需改这一行。
+        // ⚠️ versionCode 必须**保持 31、永不下调**：降到比已装版本低会触发版本降级拒绝安装，
+        //    用户只能先卸载再装 —— 那会连带清掉 App 内已配置的订阅源。改版本号只改 versionName。
         versionCode 31
-        versionName '1.1.1'
+        versionName '1.0.0'
         multiDexEnabled true
         // 矢量图走兼容库, 避免部分老设备/定制 ROM 上渲染异常
         vectorDrawables.useSupportLibrary = true

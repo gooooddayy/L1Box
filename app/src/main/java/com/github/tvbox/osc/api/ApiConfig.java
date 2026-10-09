@@ -102,6 +102,25 @@ public class ApiConfig {
      * 与"本来就没内容"，只有把结果数量带出去，首页才可能把这种"启用成功却搜不出东西"说清楚。
      */
     private volatile int lastSiteCount = -1;
+
+    /**
+     * **站点池的归属地址**（db，2026-10-09）：当前 sourceBeanList 里的站点是**从哪个订阅地址**装载来的。
+     *
+     * 为什么必须有它：在此之前"池属于哪个源"没有被记录，只能拿 HawkConfig.API_URL 去猜。
+     * 而换源是这样的顺序 —— 用户改完地址，onPause **立刻**把新地址写进 Hawk，这时池里还是旧源的站点。
+     * 若新源装载失败，地址与池就此背离，且**无人知晓**：首页/搜索/播放继续沿用上一个源，
+     * 界面（订阅列表、设置页）显示的却是新源 —— 表现为"源明明坏了，却像没问题"。
+     *
+     * 有了它，装载失败时只需一条判据：
+     *   本次要装载的地址 == poolUrl  ⇒ 地址没变，纯网络问题 ⇒ **保留旧池**（断网容错，行为不变）
+     *   本次要装载的地址 != poolUrl  ⇒ 用户换过源/线路而新源没装载起来 ⇒ **清池**
+     *                                  （旧池已不代表他的选择，留着就是"显示成有效状态"）
+     *
+     * 写入时机：parseJsonInternal 每次填池成功后。三条路径（网络拉取 / 内容异常回退缓存 /
+     * 冷启动缓存预热）读的都是**同一地址**的资源，故归属恒等于该地址。清池时置空。
+     */
+    private volatile String poolUrl = "";
+
     /** 首页豆瓣源的原始在线 ext（CDN 数据地址）；override 为 localhost 路由后由路由负责缓存/回放 */
     private String homeDoubanExtUrl = "";
     /** 内置 assets/csp_home.jar 是否已尝试加载一次(避免重复拷贝) */
@@ -236,13 +255,7 @@ public class ApiConfig {
         if (apiUrl.isEmpty()) {
             // 关闭/删除全部订阅后：立即清空内存里的站点池与相关配置。
             // 之前只回调 error，内存里仍留着上一个源的数据，搜索/播放照常能用，重启才恢复空源。
-            synchronized (sourceBeanList) {
-                sourceBeanList.clear();
-                spider = "";
-                parseBeanList.clear();
-                parseFlags = new ArrayList<>();
-            }
-            mHomeSource = null;
+            clearPoolInternal();
             // 无订阅是明确结论：站点池为空属正常空态，搜索入口应立即给空态而不是等待
             sitePoolSettled = true;
             callback.error("-1");
@@ -369,6 +382,13 @@ public class ApiConfig {
                             callback.success();
                         } catch (Throwable th) {
                             th.printStackTrace();
+                            // dd：迟到的结论（地址已被用户切走）⇒ 不改池、不回退、不报错。理由见 onError 里同一段。
+                            if (!isCurrentLoad(apiUrl)) {
+                                System.out.println("L1Sub: 忽略迟到的内容异常 地址=" + apiUrl
+                                        + " 当前地址=" + Hawk.get(HawkConfig.API_URL, "") + "（不清池/不报错）");
+                                callback.error("-1");
+                                return;
+                            }
                             // 内容坏了：本地还有这个地址上次成功的配置就先用它顶上，不让一次坏响应
                             // 把首页变成一个可用源都没有。缓存文件名是 MD5(完整地址)，换源天然对不上。
                             if (useCacheFallback(apiUrl, cache, activity, "订阅内容异常，已使用上次的配置")) {
@@ -377,6 +397,11 @@ public class ApiConfig {
                             }
                             // 没有可回退的缓存：给出**具体**结论（空响应 / 返回的是网页 / 内容不是订阅配置），
                             // 用户据此能判断该改地址还是该换源，而不是只有一句"解析配置失败"
+                            // db：内容异常同样是"装载已有定论"。缺了这句，首次配置到一个"能连上但内容坏"
+                            // 的地址时定论标志一直为 false ⇒ 搜索入口无限等待（S1 无上限）、
+                            // 首页空态也给不出原因。有了定论才会落到"订阅加载失败"那句提示上。
+                            sitePoolSettled = true;
+                            dropPoolIfUrlChanged(apiUrl);
                             callback.error("订阅内容异常：" + L1SubContent.diagTip(response.body()));
                         }
                     }
@@ -400,6 +425,18 @@ public class ApiConfig {
                         // A：重试用尽 ⇒ 网络侧有了结论，预热护栏撤掉（此刻起池不会再变）。
                         // 注意必须放在 `attempt < 2` 判断**之后**：重试途中池确实还可能有变化。
                         bootPoolFromCache = false;
+                        // 迟到的结论（dd，2026-10-09）：这次装载的地址**已经被用户切走了** ⇒ 它没有任何权力
+                        // 改动"当前地址"的状态：不清池、不报错、也不做缓存回退（回退会把被放弃的源装进池）。
+                        // 真机实证 19:10 —— 好源刚装载出 40 个站点，一个早已放弃的坏地址的迟到失败回调
+                        // 把这份池清掉了，搜索随即变成"订阅未加载成功 ⇒ 一直加载中"。
+                        if (!isCurrentLoad(apiUrl)) {
+                            System.out.println("L1Sub: 忽略迟到的装载失败 地址=" + apiUrl
+                                    + " 当前地址=" + Hawk.get(HawkConfig.API_URL, "") + "（不清池/不报错）");
+                            // "-1" 是本工程既有的"不要弹提示"约定（HomeFragment 收到 -1 只推进流程、不提示），
+                            // 用它既不会对着正在正常工作的源弹"加载失败"，也不会让调用方的在途标记卡住。
+                            callback.error("-1");
+                            return;
+                        }
                         if (useCacheFallback(apiUrl, cache, activity, "网络不佳，已使用缓存的订阅配置")) {
                             callback.success();
                             return;
@@ -408,6 +445,8 @@ public class ApiConfig {
                         sitePoolSettled = true;
                         String err = response.getException() != null ? response.getException().getMessage() : "";
                         System.out.println("L1Sub: 拉取配置失败 地址=" + configUrl + " 异常=" + err);
+                        // db：地址变过（换源/切线路失败）⇒ 清掉前源池；地址没变（纯网络问题）⇒ 保留旧池
+                        dropPoolIfUrlChanged(apiUrl);
                         // 提示只说人话；异常原文留给日志（用户既看不懂也不该看到堆栈）
                         callback.error("订阅拉取失败，请检查网络");
                     }
@@ -791,6 +830,9 @@ public class ApiConfig {
         // 与"装载完成且有内容"（静默继续）。放在这里而不是各调用方，是因为所有路径
         // （在线拉取 / 缓存回读 / 无订阅清空）最终都要经过本方法。
         lastSiteCount = sourceBeanList.size();
+        // db：本池的归属地址就是本次装载的地址（网络拉取 / 内容异常回退缓存 / 冷启动缓存预热
+        // 三条路径读的都是同一地址的资源）。失败判据全靠它，所以必须在**填池成功之后**才写。
+        poolUrl = apiUrl;
         // 站点池为空是**明确结论**，不是"还没加载完"。区分"内容根本不是订阅"与
         // "确实是订阅但没有站点"，让日志能直接告诉我们该换地址还是该换源。
         if (sourceBeanList.isEmpty()) {
@@ -1224,6 +1266,80 @@ public class ApiConfig {
             }
         }
         return list;
+    }
+
+    /**
+     * **清空站点池**（db，2026-10-09 抽取）。
+     *
+     * 两处共用：① 地址为空（关闭/删除全部订阅）；② 换源后新源没装载起来（见 {@link #poolUrl} 字段注释）。
+     *
+     * 抽成一个方法是**刻意的** —— 本 bug 的成因正是"同一个清池动作只写在了一处分支里"：
+     * 当初只修了"删光订阅"（见 ③ 的注释），漏了"换成另一个源"，于是前者的经验没能覆盖后者。
+     * 两处共用同一段，就不会再有下一次"只修了一支"。
+     *
+     * ⚠️ **不能只 clear 站点池**：spider / parseBeanList / parseFlags 都是随订阅一起装载的，
+     * 留着它们会让设置页的解析开关、站点标记**继续显示上一个源**，变成另一种"显示 A、生效 B"。
+     */
+    private void clearPoolInternal() {
+        synchronized (sourceBeanList) {
+            sourceBeanList.clear();
+            spider = "";
+            parseBeanList.clear();
+            parseFlags = new ArrayList<>();
+        }
+        mHomeSource = null;
+        // 池里的内容已不存在，归属地址随之作废（否则下次失败会误判成"地址没变"而保留一个空池）
+        poolUrl = "";
+        // 与池保持一致：池空 ⇒ 站点数 0（否则 warnIfNoSite 会因残留的旧计数而不再提示）
+        lastSiteCount = 0;
+    }
+
+    /** 站点池的归属地址。空串 = 池里没有内容。语义见字段注释。 */
+    public String getPoolUrl() {
+        return poolUrl;
+    }
+
+    /**
+     * 这次装载**是否仍然是"当前地址"的装载**（dd，2026-10-09）。
+     *
+     * 为什么必须有它：装载是异步的，失败时还会指数退避重试（最多 3 次、横跨约 4.5 秒）。
+     * 用户在这几秒内完全可能已经切到别的源 —— 那一刻**这个结论属于一个已经被放弃的地址**，
+     * 它没有任何权力去改动"当前地址"的状态。
+     *
+     * 真机实证（2026-10-09 19:10）：好源刚装载出 40 个站点，一个早已放弃的坏地址的**迟到失败回调**
+     * 把这份池清掉了 ⇒ 搜索立刻变成"订阅未加载成功"，界面一直加载中。
+     * 判据只有一条：本次装载的地址 是否等于 **此刻** Hawk 里的地址。
+     */
+    private static boolean isCurrentLoad(String apiUrl) {
+        if (apiUrl == null) return false;
+        return apiUrl.equals(L1SubUrl.normalize(Hawk.get(HawkConfig.API_URL, "")));
+    }
+
+    /**
+     * 装载失败时的收尾判据（db，2026-10-09）：**只有地址变过才清池**。
+     *
+     *   本次地址 == poolUrl ⇒ 用户没换源，失败纯粹是网络/源站抽风 ⇒ **保留旧池**：
+     *                       这正是"断网仍能用上次的配置"的容错，一行都不能动。
+     *   本次地址 != poolUrl ⇒ 用户换过源/线路而新源没装载起来 ⇒ **清池**：
+     *                       旧池已不代表他的选择，留着就是"源明明坏了却显示成有效状态"。
+     *
+     * ⭐ 清池**只在这里**（装载拿到失败结论之后）发生，**绝不在"用户改地址"那一刻清**。
+     * 时机放在结果之后，是为了让装载期间旧池继续可用 ⇒ **无间隔切换**；
+     * 若改成"改地址即清"，就会在装载期间（正常 0.3~2s，弱网 4.5s+）留下无池窗口，
+     * 恰好把旧池清在最需要它的时候 —— 那等于拆掉断网容错。
+     *
+     * ⚠️ dd 追加的前置条件：**本次地址必须仍是当前地址**。否则这是一个已被放弃的地址的迟到结论，
+     *    它会误清掉当前可用源的池（见 {@link #isCurrentLoad}）。防御性写法 —— 调用方也已提前判过。
+     */
+    private void dropPoolIfUrlChanged(String apiUrl) {
+        if (apiUrl == null || apiUrl.equals(poolUrl)) return;
+        if (!isCurrentLoad(apiUrl)) {
+            System.out.println("L1Sub: 忽略迟到的装载失败（不清池）地址=" + apiUrl
+                    + " 当前地址=" + Hawk.get(HawkConfig.API_URL, ""));
+            return;
+        }
+        System.out.println("L1Sub: 换源装载失败 地址=" + apiUrl + " 池归属=" + poolUrl + " ⇒ 清空前源站点池");
+        clearPoolInternal();
     }
 
     /**

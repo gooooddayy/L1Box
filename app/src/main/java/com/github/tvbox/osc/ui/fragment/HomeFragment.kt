@@ -289,8 +289,12 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
             )
             initViewPager()
             // 首页冷启动缓存：分类骨架渲染成功即保存（合并已归档的影片列表，异步落盘）
+            // db（2026-10-09）：标签用**池的归属地址**而不是当前 Hawk 地址。换源后到新源装载出结论
+            // 之间有一段窗口（正常 0.3~2s，弱网 4.5s+），这期间地址已是新源、池里还是旧源的站点；
+            // 此刻若有在途的分类回调到达，用 Hawk 地址做标签就会写出「新地址 + 旧源内容」的缓存，
+            // 下次冷启动地址一比"命中"，直接秒显旧源内容并跳过重拉。用池归属则天然写不出这种脏缓存。
             HomeCache.saveSkeleton(
-                Hawk.get(HawkConfig.API_URL, ""),
+                ApiConfig.get().poolUrl,
                 ApiConfig.get().getHomeSourceBean().key ?: "",
                 mSortDataList
             )
@@ -506,6 +510,15 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
     private fun showHomeEmpty() {
         mBinding.contentLayout.visibility = View.GONE
         mBinding.homeEmptyState.visibility = View.VISIBLE
+        // db（2026-10-09）：空态要分清两种情况，否则"配了源但装载失败"与"压根没配源"
+        // 长得一模一样 —— 用户看到的就是"源明明坏了却像没问题"。
+        //   有订阅地址 + 池里没站点 + 池已定论 ⇒ 订阅装载失败 ⇒ 补一句原因
+        //   其余（真没配源 / 源里确实没有站点）⇒ 维持原样，只留"添加订阅源"按钮
+        // 判据与搜索页 SUB_FAIL 完全一致（同一套条件，两处不能各写各的）。
+        val subLoadFailed = Hawk.get(HawkConfig.API_URL, "").isNotEmpty() &&
+                !ApiConfig.get().hasSubscription() &&
+                ApiConfig.get().isSitePoolSettled()
+        mBinding.tvEmptyTip.visibility = if (subLoadFailed) View.VISIBLE else View.GONE
     }
 
     private fun loadConfig(){
@@ -525,7 +538,9 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
             }
 
             override fun error(msg: String) {
-                // 订阅拉取失败（离线/不可达等）不阻塞首页，仍用已有站点池/内置源渲染
+                // 订阅装载失败（离线/不可达/内容异常）不阻塞首页流程。
+                // 池是否还可用由 ApiConfig 的判据决定（db，2026-10-09）：地址没变时旧池被保留
+                // （断网仍能用上次的配置）；地址变过则池已被清空，后续自然落到空态 + 原因提示。
                 mHandler.post {
                     dataInitOk = true
                     jarInitOk = true
@@ -797,7 +812,10 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
                 mReloading = false
                 dataInitOk = true
                 jarInitOk = true
-                // 切换失败也用当前站点池重拉一次，避免停留在旧线路内容或加载态
+                // 装载失败后照常推进首页流程。池还在不在由 ApiConfig 的判据决定（db，2026-10-09）：
+                //   地址没变（纯网络问题）⇒ 池被保留 ⇒ 这里拿旧池重拉，内容照旧可用（断网容错）
+                //   地址变过（换源/切线路失败）⇒ 池已被清空 ⇒ 候选站点为空 ⇒ 自然落到空态 + 原因提示
+                // 两种情况都只走这一条路，不需要在这里再分支。
                 startHomeLoad()
                 schedulePendingReload()
             }

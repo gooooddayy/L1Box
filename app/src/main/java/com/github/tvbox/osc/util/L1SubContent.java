@@ -35,9 +35,12 @@ public class L1SubContent {
     /**
      * 把原始响应收敛成 JSON 字符串；拿不到返回 null。
      * 顺序：直接取 JSON → 裸 base64 解一轮 → 再解一轮（有的源是双层编码）。
+     *
+     * ⚠️ 净化用的是 {@link #keepLines}（**保留换行**），不是 {@link L1SubUrl#stripInvisible}。
+     * 原因见 keepLines 的注释：删掉换行会让 `//` 行注释失去行尾边界，整类订阅配置被误判成"不是配置"。
      */
     public static String toJson(String raw) {
-        String s = L1SubUrl.stripInvisible(raw);
+        String s = keepLines(raw);
         if (s.isEmpty()) return null;
 
         String json = pickJson(s);
@@ -47,7 +50,7 @@ public class L1SubContent {
         for (int round = 0; round < 2; round++) {
             String decoded = decodeBase64(s);
             if (decoded == null) break;
-            s = L1SubUrl.stripInvisible(decoded);
+            s = keepLines(decoded);
             if (s.isEmpty()) break;
             json = pickJson(s);
             if (json != null) return json;
@@ -55,9 +58,34 @@ public class L1SubContent {
         return null;
     }
 
+    /**
+     * JSON 路径专用的净化：去 BOM / 零宽 / 其它控制字符，但**保留换行**（{@code \n \r \t}）与空格。
+     *
+     * ⚠️ 与 {@link L1SubUrl#stripInvisible} 的差别是**刻意的**，两者不可互换：
+     *   · 地址规范化那条路必须把空白全删（`http://a b` 这种脏地址靠它收敛）；
+     *   · JSON 这条路**绝不能删换行** —— 删了之后 `//行注释` 会和后一行正文粘成一体、失去行尾边界，
+     *     于是 {@link #cleanJson} 既不敢删它、{@link #looksParsable} 又会因"字符串外残留 //"直接判失败。
+     *
+     * 后果是真机实证过的：**凡带 `//` 行注释的订阅配置一律被判"内容不是订阅配置"**。
+     * 2026-10-09 拿一份真实配置验证 —— 24.8 KB、35 处 `//` 注释、**48 个站点**，被判失败，
+     * 而它在别的客户端里正常可用。保留换行后，行注释有了明确边界，可以安全删除。
+     */
+    static String keepLines(String raw) {
+        if (raw == null) return "";
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c == '\uFEFF' || c == '\u200B' || c == '\u200C' || c == '\u200D' || c == '\u00A0') continue;
+            // 只丢"真正不可见"的控制字符；换行/回车/制表与空格原样留下
+            if (c < ' ' && c != '\n' && c != '\r' && c != '\t') continue;
+            sb.append(c);
+        }
+        return sb.toString().trim();
+    }
+
     /** 给用户一个准确结论，而不是笼统的"解析失败" */
     public static int diagnose(String raw) {
-        String s = L1SubUrl.stripInvisible(raw);
+        String s = keepLines(raw);
         if (s.isEmpty()) return EMPTY;
         if (looksLikeHtml(s)) return HTML;
         if (toJson(raw) != null) return OK;
@@ -182,15 +210,21 @@ public class L1SubContent {
             }
             if (c == '/') {
                 // 只处理块注释：`/* */` 自带结束标记，删掉是安全的。
-                // **行注释 `//` 不在这里处理** —— 它要靠换行界定结束位置，而进入本方法前
-                // L1SubUrl.stripInvisible 已经把换行当作不可见字符删掉了：`{//说明\n"sites":...}`
-                // 在这里实际是 `{//说明"sites":...}`，注释与正文已经粘死、无法区分边界。
-                // 早期版本在这里按"删到行尾"处理，结果在没有换行可找时一路删到字符串末尾，
-                // 把整份配置吃光、只留下一个 `{` —— 那比不处理更糟。认不出就如实判失败。
                 if (i + 1 < s.length() && s.charAt(i + 1) == '*') {
                     i += 2;
                     while (i + 1 < s.length() && !(s.charAt(i) == '*' && s.charAt(i + 1) == '/')) i++;
                     i++;
+                    continue;
+                }
+                // 行注释 `//`：删到行尾为止（dc，2026-10-09）。
+                // **前提是换行还在** —— 调用方走的是 keepLines（保留 \n \r），边界因此可界定。
+                // ⚠️ 只能删到 `\r` / `\n`，**绝不能删到内容末尾**：早期版本在"换行已被 stripInvisible
+                //    删掉"的前提下按"删到行尾"处理，没有换行可找时一路删到末尾，把整份配置吃光、
+                //    只剩一个 `{` —— 那比不处理更糟。现在换行被刻意保留，两种前提不再混淆。
+                if (i + 1 < s.length() && s.charAt(i + 1) == '/') {
+                    i += 2;
+                    while (i < s.length() && s.charAt(i) != '\n' && s.charAt(i) != '\r') i++;
+                    i--;          // 停在换行前一格：让 for 的 i++ 正好落到换行上（换行本身保留）
                     continue;
                 }
             }
