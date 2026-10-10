@@ -22,6 +22,7 @@ import com.github.tvbox.osc.util.AES;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.JarWriteTrace;
 import com.github.tvbox.osc.util.L1Executors;
 import com.github.tvbox.osc.util.L1SubContent;
 import com.github.tvbox.osc.util.L1SubUrl;
@@ -44,11 +45,14 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -539,11 +543,78 @@ public class ApiConfig {
     }
 
     /**
+     * dg（2026-10-10）：正在下载中的 jar 文件名。
+     * 同一时刻只允许一个下载在途 —— 真机实测到 `并发=2`（两次 loadJar 都认为"需要重下"），
+     * 两个流写同一个文件会**交错**，产出既不是 zip 也不是 dex 的垃圾。
+     */
+    private static final Set<String> JAR_DOWNLOADING = ConcurrentHashMap.newKeySet();
+
+    /** dg：jar 已在下载中时，第二次调用的延后重试间隔（不阻塞线程，只拍一拍再看） */
+    private static final long JAR_RETRY_DELAY_MS = 1500L;
+
+    /**
+     * dg：内容是不是 jar/dex。
+     * zip 魔数 `PK`（jar 就是 zip）或 dex 魔数 `dex\n`；其余一律视为非法。
+     * 判据取"文件头"而不是"能不能解压"，是为了在**写盘之前**就能拒绝，
+     * 从而不破坏磁盘上已有的可用 jar。
+     */
+    private static boolean looksLikeJarBytes(byte[] data) {
+        if (data == null || data.length < 4) return false;
+        if (data[0] == 'P' && data[1] == 'K') return true;
+        return data[0] == 'd' && data[1] == 'e' && data[2] == 'x';
+    }
+
+    /**
      * 下载 jar。下载完成后加载仍在后台线程执行——OkGo 回调默认回到主线程，
      * 若在这里直接 load 又会把重活带回主线程，所以交给 loadJarFileAsync。
+     *
+     * <p>dg（2026-10-10）加两道防护，针对真机实测到的「换源后 jar 被写坏」：
+     * <ol>
+     *   <li><b>内容校验</b>：body 先读进内存，**确认是 zip/dex 才允许碰磁盘**。
+     *       真机铁证：jar 地址返回 HTTP 403 时 body 是 9 字节 "Forbidden"，
+     *       而原实现**无条件** `delete()` + 写入 ⇒ 把 1,855,517 字节的可用 jar
+     *       摧毁成 9 字节垃圾 ⇒ 之后每次装载都失败（`Expected valid zip or dex file`）
+     *       ⇒ 弹「线路切换失败」并且**首页不加载**。</li>
+     *   <li><b>同一文件同一时刻只允许一个下载</b>（见 {@link #JAR_DOWNLOADING}）。</li>
+     * </ol>
+     * 内容非法时**抛异常**是刻意的：OkGo 会转走 `onError`，而那里本来就有
+     * 「本地还有旧 jar ⇒ 用旧的顶上」的兜底 ⇒ 用户看到的是「网络不佳，已使用缓存数据源」，
+     * 而不是「线路切换失败 + 首页空白」。
      */
     private void downloadJar(String jarUrl, boolean isJarInImg, File cache, String fileName, String jarKey,
                              JarLoader loader, LoadConfigCallback callback) {
+        // dg：延后重试进来时先复检一次 —— 第一个下载若已落地并装载成功，这里直接复用，不重复下载
+        if (cache.exists() && jarKey.equals(loadedJarKeys.get(fileName))) {
+            callback.success();
+            return;
+        }
+        // dg：互斥 —— 已有同文件下载在途就不再发起第二个请求。
+        // 不在这里阻塞等待（会占住 OkGo 的线程），改为延后一拍重跑；届时多半已命中上面的复用。
+        if (!JAR_DOWNLOADING.add(fileName)) {
+            System.out.println("L1Sub: jar 已在下载中 ⇒ 延后重试 文件=" + fileName);
+            MAIN_HANDLER.postDelayed(() ->
+                    downloadJar(jarUrl, isJarInImg, cache, fileName, jarKey, loader, callback), JAR_RETRY_DELAY_MS);
+            return;
+        }
+        // dg：把最终回调包一层 —— 任何终态（装载成功/失败/无响应体）都先摘掉"下载中"标记，
+        // 避免标记泄漏导致后续同文件下载永远被延后。
+        final LoadConfigCallback fin = new LoadConfigCallback() {
+            @Override
+            public void retry() {
+            }
+
+            @Override
+            public void success() {
+                JAR_DOWNLOADING.remove(fileName);
+                callback.success();
+            }
+
+            @Override
+            public void error(String msg) {
+                JAR_DOWNLOADING.remove(fileName);
+                callback.error(msg);
+            }
+        };
         OkGo.<File>get(jarUrl)
                 .headers("User-Agent", userAgent)
                 .headers("Accept", requestAccept)
@@ -554,39 +625,57 @@ public class ApiConfig {
                 File cacheDir = cache.getParentFile();
                 if (!cacheDir.exists())
                     cacheDir.mkdirs();
-                if (cache.exists())
-                    cache.delete();
-                FileOutputStream fos = new FileOutputStream(cache);
+                // dg：先把 body 读进内存并判定，**确认是 jar 才允许动磁盘上的旧文件**
+                byte[] data;
                 if (isJarInImg) {
-                    String respData = response.body().string();
-                    byte[] imgJar = getImgJar(respData);
-                    fos.write(imgJar);
+                    data = getImgJar(response.body().string());
                 } else {
-                    fos.write(response.body().bytes());
+                    data = response.body().bytes();
                 }
-                fos.flush();
-                fos.close();
-                return cache;
+                int len = data == null ? 0 : data.length;
+                boolean okContent = looksLikeJarBytes(data);
+                System.out.println("L1Sub: jar 下载 " + jarUrl + " → HTTP " + response.code()
+                        + " 长度=" + len + " 判定=" + (okContent ? "合法" : "非法"));
+                if (!okContent) {
+                    // 不删、不写：旧 jar 原样保留 ⇒ 交给 onError 的既有兜底去用旧 jar 顶上
+                    throw new IOException("jar 内容非法（HTTP " + response.code() + " 长度=" + len + "）");
+                }
+                // df 观测（2026-10-10）：本方法会 delete()+重写 jar 缓存。只记账、不改行为。
+                JarWriteTrace.begin("A:ApiConfig", cache);
+                try {
+                    if (cache.exists())
+                        cache.delete();
+                    FileOutputStream fos = new FileOutputStream(cache);
+                    try {
+                        fos.write(data);
+                        fos.flush();
+                    } finally {
+                        fos.close();
+                    }
+                    return cache;
+                } finally {
+                    JarWriteTrace.end("A:ApiConfig", cache);
+                }
             }
 
             @Override
             public void onSuccess(Response<File> response) {
                 if (response.body() != null && response.body().exists()) {
-                    loadJarFileAsync(response.body(), fileName, jarKey, loader, callback, null);
+                    loadJarFileAsync(response.body(), fileName, jarKey, loader, fin, null);
                 } else {
-                    callback.error("");
+                    fin.error("");
                 }
             }
 
             @Override
             public void onError(Response<File> response) {
                 super.onError(response);
-                // 弱网兜底：下载失败但本地还有旧的 jar 缓存 → 先用旧的顶上，别让整个源瘫掉
+                // 弱网 / 内容非法兜底：本地还有旧的 jar 缓存 → 先用旧的顶上，别让整个源瘫掉
                 if (cache.exists() && cache.length() > 0) {
-                    loadJarFileAsync(cache, fileName, jarKey, loader, callback, "网络不佳，已使用缓存数据源");
+                    loadJarFileAsync(cache, fileName, jarKey, loader, fin, "网络不佳，已使用缓存数据源");
                     return;
                 }
-                callback.error("");
+                fin.error("");
             }
         });
     }

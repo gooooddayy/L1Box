@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.SystemClock;
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.util.JarWriteTrace;
 import com.github.tvbox.osc.util.MD5;
 import com.lzy.okgo.OkGo;
 
@@ -411,23 +412,31 @@ public class JarLoader {
                 }
             }
             try {
-                cache.delete(); // 缓存文件可能被 setReadOnly 标记，先删再写保证版本更新可覆盖
-                Response response = OkGo.<File>get(jar).execute();
-                InputStream is = response.body().byteStream();
-                OutputStream os = new FileOutputStream(cache);
+                // df 观测（2026-10-10）：与 ApiConfig.downloadJar 是**两个独立的写入者**，
+                // 都走 delete()+重写同一个 jar 缓存且无互斥 —— 真机日志里 csp.jar 变成
+                // "Expected valid zip or dex file" 就出在这里。只记账、不改行为。
+                JarWriteTrace.begin("B:JarLoader", cache);
                 try {
-                    byte[] buffer = new byte[2048];
-                    int length;
-                    while ((length = is.read(buffer)) > 0) {
-                        os.write(buffer, 0, length);
+                    cache.delete(); // 缓存文件可能被 setReadOnly 标记，先删再写保证版本更新可覆盖
+                    Response response = OkGo.<File>get(jar).execute();
+                    InputStream is = response.body().byteStream();
+                    OutputStream os = new FileOutputStream(cache);
+                    try {
+                        byte[] buffer = new byte[2048];
+                        int length;
+                        while ((length = is.read(buffer)) > 0) {
+                            os.write(buffer, 0, length);
+                        }
+                    } finally {
+                        try {
+                            is.close();
+                            os.close();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                 } finally {
-                    try {
-                        is.close();
-                        os.close();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                    JarWriteTrace.end("B:JarLoader", cache);
                 }
                 loadClassLoader(path, key);
                 return classLoaders.get(key);
