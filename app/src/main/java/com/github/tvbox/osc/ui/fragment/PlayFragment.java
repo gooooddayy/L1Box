@@ -15,7 +15,6 @@ import android.graphics.Color;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -92,9 +91,6 @@ import com.github.tvbox.osc.util.thunder.Jianpian;
 import com.github.tvbox.osc.util.thunder.Thunder;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.google.android.exoplayer2.Player;
-import com.hjq.permissions.OnPermissionCallback;
-import com.hjq.permissions.Permission;
-import com.hjq.permissions.XXPermissions;
 import com.google.android.exoplayer2.text.Cue;
 import com.gyf.immersionbar.BarHide;
 import com.gyf.immersionbar.ImmersionBar;
@@ -106,7 +102,6 @@ import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.HttpHeaders;
 import com.lzy.okgo.model.Response;
 import com.lzy.okgo.request.GetRequest;
-import com.obsez.android.lib.filechooser.ChooserDialog;
 import com.orhanobut.hawk.Hawk;
 
 import org.apache.commons.lang3.StringUtils;
@@ -118,6 +113,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -139,6 +137,13 @@ import xyz.doikki.videoplayer.player.ProgressManager;
 import xyz.doikki.videoplayer.player.VideoView;
 
 public class PlayFragment extends BaseLazyFragment {
+
+    /** 本地字幕走系统文件选择器（SAF）的请求码 */
+    private static final int REQ_PICK_SUBTITLE = 0x5B71;
+
+    /** 认得的字幕扩展名（SAF 拿不到可靠 MIME，只能按名字校验） */
+    private static final String[] SUBTITLE_EXTS = {"srt", "ass", "scc", "stl", "ttml"};
+
     private MyVideoView mVideoView;
     private TextView mPlayLoadTip;
     private ImageView mPlayLoadErr;
@@ -903,56 +908,117 @@ public class PlayFragment extends BaseLazyFragment {
         subtitleDialog.setLocalFileChooserListener(new SubtitleDialog.LocalFileChooserListener() {
             @Override
             public void openLocalFileChooserDialog() {
-                // Android 11+ 必须先拿到文件访问权限，否则选中文件后读取一定失败
-                if (!XXPermissions.isGranted(getActivity(), Permission.MANAGE_EXTERNAL_STORAGE)) {
-                    ToastUtils.showShort("需要文件访问权限才能加载本地字幕");
-                    requestStoragePermission();
-                    return;
-                }
-                openSubtitleFileChooser();
+                // dm（2026-10-12）：改用**系统文件选择器**（SAF），不再索要「所有文件访问」这个权限。
+                // 原实现是自研文件浏览器，从 /sdcard 根目录开始遍历，因此 Android 11+ 必须申请那个
+                // 最重的权限（还会把用户弹到系统设置页手动开）；换 SAF 后由用户自己选文件，
+                // **一分钱权限都不用**，Android 11+ 上反而更不容易出现"选中了却读不到"。
+                // SAF 自 API 19 起可用 ⇒ Android 6+ 全覆盖。
+                pickLocalSubtitle();
             }
         });
         subtitleDialog.show();
     }
 
-    private void requestStoragePermission() {
-        XXPermissions.with(this)
-                .permission(Permission.MANAGE_EXTERNAL_STORAGE)
-                .request(new OnPermissionCallback() {
-                    @Override
-                    public void onGranted(List<String> permissions, boolean all) {
-                        if (all) {
-                            openSubtitleFileChooser();
-                        } else {
-                            ToastUtils.showLong("部分权限未正常授予，请授权");
-                        }
-                    }
-
-                    @Override
-                    public void onDenied(List<String> permissions, boolean never) {
-                        if (never) {
-                            ToastUtils.showLong("文件权限被永久拒绝，请手动授权");
-                            XXPermissions.startPermissionActivity(getActivity(), permissions);
-                        } else {
-                            ToastUtils.showShort("获取权限失败");
-                        }
-                    }
-                });
+    /** 本地字幕（dm）：拉起系统文件选择器 */
+    private void pickLocalSubtitle() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            // 不按 MIME 过滤：字幕文件在不少设备上被标成 application/octet-stream，
+            // 一过滤就会"看不到自己的文件"；改为选完后按扩展名校验（见 isSubtitleName）
+            intent.setType("*/*");
+            startActivityForResult(intent, REQ_PICK_SUBTITLE);
+        } catch (Throwable th) {
+            // 部分电视盒子/精简 ROM 没有文档选择器
+            ToastUtils.showLong("未找到可用的文件管理器，无法选择本地字幕");
+        }
     }
 
-    private void openSubtitleFileChooser() {
-        new ChooserDialog(getActivity(), R.style.FileChooser)
-                .withFilter(false, false, "srt", "ass", "scc", "stl", "ttml")
-                .withStartFile(Environment.getExternalStorageDirectory().getAbsolutePath())
-                .withChosenListener(new ChooserDialog.Result() {
-                    @Override
-                    public void onChoosePath(String path, File pathFile) {
-                        LOG.i("Local Subtitle Path: " + path);
-                        setSubtitle(path);//设置字幕
-                    }
-                })
-                .build()
-                .show();
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PICK_SUBTITLE) return;
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return;
+        importSubtitleFromUri(data.getData());
+    }
+
+    /**
+     * 把系统选择器返回的 content:// 复制进应用缓存，再交给既有的 setSubtitle(路径)。
+     *
+     * 为什么必须复制：字幕解析链路吃的是**真实文件路径**（setSubtitle → SubtitleView.setSubtitlePath），
+     * 而 SAF 给的是 content:// Uri —— 直接透传会让解析器拿不到文件。
+     * 缓存目录不需要任何权限，SAF 的读授权只在本次回调内临时有效，所以复制要在这里同步做完。
+     */
+    private void importSubtitleFromUri(Uri uri) {
+        if (!isAdded()) return;
+        String name = queryDisplayName(uri);
+        if (!isSubtitleName(name)) {
+            ToastUtils.showLong("请选择 srt / ass / scc / stl / ttml 字幕文件");
+            return;
+        }
+        InputStream in = null;
+        OutputStream out = null;
+        File dst = new File(requireContext().getCacheDir(),
+                "sub_" + System.currentTimeMillis() + "_" + safeName(name));
+        try {
+            in = requireContext().getContentResolver().openInputStream(uri);
+            if (in == null) throw new IllegalStateException("openInputStream 返回 null");
+            out = new FileOutputStream(dst);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.flush();
+            setSubtitle(dst.getAbsolutePath());
+        } catch (Throwable th) {
+            ToastUtils.showLong("读取字幕文件失败，请换一个文件重试");
+        } finally {
+            try {
+                if (in != null) in.close();
+            } catch (Throwable ignored) {
+            }
+            try {
+                if (out != null) out.close();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 取文件显示名（拿不到就退回 Uri 末段） */
+    private String queryDisplayName(Uri uri) {
+        android.database.Cursor c = null;
+        try {
+            c = requireContext().getContentResolver().query(uri, null, null, null, null);
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) {
+                    String s = c.getString(idx);
+                    if (!StringUtils.isEmpty(s)) return s;
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            try {
+                if (c != null) c.close();
+            } catch (Throwable ignored) {
+            }
+        }
+        String s = uri.getLastPathSegment();
+        return s == null ? "" : s;
+    }
+
+    /** 扩展名校验：SAF 拿不到可靠的 MIME，只能按名字判 */
+    private boolean isSubtitleName(String name) {
+        if (StringUtils.isEmpty(name)) return false;
+        String lower = name.toLowerCase();
+        for (String ext : SUBTITLE_EXTS) {
+            if (lower.endsWith("." + ext)) return true;
+        }
+        return false;
+    }
+
+    /** 文件名里剔掉路径分隔等字符，避免落到缓存时抛异常 */
+    private String safeName(String name) {
+        return name.replace('/', '_').replace('\\', '_');
     }
 
     void setSubtitleViewTextStyle(int style) {

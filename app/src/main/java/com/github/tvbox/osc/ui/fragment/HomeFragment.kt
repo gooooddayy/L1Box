@@ -92,6 +92,16 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
     private var mLastApiUrl = ""
     /** 静默重载站点池：置位时 loadJar 完成后不重拉首页内容，避免切线路时首页闪一下加载态 */
     private var mSilentReload = false
+
+    /**
+     * dh2（2026-10-12）：上一次真正执行的换源重载（地址 + 时刻）。
+     *
+     * 用来吸收"同一地址被双触发"：返回首页时 `SubscriptionActivity` 的 RefreshEvent 与
+     * `onResume` 的地址比对会**各触发一次** `reloadSitePool`（真机日志：两次「换源过渡」
+     * 间隔 0.38~1.7 秒，每次都各拉一遍订阅与首页）。同一地址在 1.5 秒内重复触发即视为同一次换源。
+     */
+    private var mLastReloadUrl = ""
+    private var mLastReloadAt = 0L
     /** 站点池重载中标记：防止返回首页时 RefreshEvent 与 onResume 重复触发导致两次 loadConfig 并发（"冲突闪退"根因） */
     private var mReloading = false
     /** 加载在途标记：onResume 发起的完整加载流程未结束时置位，阻止再次 onResume 叠加新的 loadConfig */
@@ -586,7 +596,16 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
                         if (mSilentReload) {
                             mSilentReload = false
                             // 线路已切换，首页内容取自新线路的站点，需重新拉取（不弹"上次观看"）
-                            showSuccess()
+                            //
+                            // dh2（2026-10-12）：这里**不能收掉加载态**。
+                            // 换源过渡期界面正处于"加载中"；此刻一旦撤掉加载态，露出来的是**还没被替换掉的
+                            // 旧 ViewPager**（分类与页面要等新线路的分类数据回来才重建）
+                            // ⇒ 用户实测到的「加载中 → 上一线路内容 → 新线路内容」中间那一闪。
+                            // 保持加载态不放，等新线路内容真正上屏时再收，共三个出口：
+                            //   ① 分类数据回来 → initViewModel 的 sortResult 观察者（那里收，并重建标签页）
+                            //   ② 候选站点为空 → startHomeLoad 的空态出口
+                            //   ③ 超时 → forceFinishHomeLoad 兜底
+                            System.out.println("首页加载：换源装载成功 ⇒ 保持加载态，等新线路内容上屏（不提前露出上一线路内容）")
                             startHomeLoad()
                             return
                         }
@@ -610,6 +629,13 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
                         if (mSilentReload) {
                             mSilentReload = false
                             mHandler.post { ToastUtils.showShort("线路切换失败,请重试") }
+                            // dh（2026-10-12）：失败也必须**推进首页流程**。
+                            // 原来这里直接 return —— 界面就停在换源那一刻的状态；而换源过渡态已改成
+                            // "加载中"（本线路无缓存时），所以不推进就是**永久转圈**。
+                            // 池的留/清由 ApiConfig 判据决定（db）：地址没变（纯网络）⇒ 池保留 ⇒ 拿旧池重拉，
+                            // 内容照旧可用；地址变过（换源失败）⇒ 池已清 ⇒ 自然落到空态 +「订阅加载失败，请检查源地址」。
+                            System.out.println("首页加载：jar 装载失败 ⇒ 仍推进首页流程（推进后由池决定显示内容或空态）")
+                            mHandler.post { initData() }
                             return
                         }
                         mHandler.post {
@@ -778,6 +804,18 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
             mPendingReload = true
             return
         }
+        // dh2（2026-10-12）：同一地址 1.5 秒内重复触发 ⇒ 视为同一次换源的双触发，跳过。
+        // 真机日志：返回首页时 RefreshEvent 与 onResume 会各触发一次，两次各拉一遍订阅与首页
+        //（观测到的间隔 0.38~1.7 秒）。用户手动切到**另一个**地址完全不受影响；
+        // 这条同时也吸收了 mPendingReload 的补刷（补刷时地址相同、时间相近）。
+        val curUrlNow = Hawk.get(HawkConfig.API_URL, "")
+        val nowMs = System.currentTimeMillis()
+        if (curUrlNow == mLastReloadUrl && nowMs - mLastReloadAt < 1500) {
+            System.out.println("首页加载：换源重载去重（同地址 1.5s 内重复触发）⇒ 跳过")
+            return
+        }
+        mLastReloadUrl = curUrlNow
+        mLastReloadAt = nowMs
         mReloading = true
         mLoadInFlight = true
         // 用户主动重载（切线路/下拉/订阅变更）必须真刷首页，清除冷启动缓存的跳过标记
@@ -785,8 +823,20 @@ class HomeFragment : BaseVbFragment<FragmentHomeBinding>() {
         dataInitOk = false
         jarInitOk = false
         onlyConfigChanged = false
-        // 不显示加载状态条（取消显示），保持内容区可见即可
-        showSuccess()
+        // dh（2026-10-12）：过渡期**只显示本线路自己的状态**。
+        // 有本线路自己的首页缓存 ⇒ 保持内容可见（切换丝滑，这是缓存的初衷）；
+        // 没有（第一次用这个源 / 缓存属于上一个源）⇒ 显示"加载中"占位，
+        // 而不是把**上一个线路的内容**留在屏幕上 —— 否则用户看到的是「换了源、界面还是旧内容」的混搭。
+        val targetUrl = Hawk.get(HawkConfig.API_URL, "")
+        val ownCache = HomeCache.get()
+        val hasOwnCache = ownCache != null && ownCache.apiUrl == targetUrl
+                && !ownCache.empty && !ownCache.tabs.isNullOrEmpty()
+        if (hasOwnCache) {
+            showSuccess()
+        } else {
+            System.out.println("首页加载：换源过渡 ⇒ 本线路暂无缓存，显示加载中（不沿用上一线路内容）")
+            showLoading()
+        }
         mBinding.homeEmptyState.visibility = View.GONE
         startHomeWatchdog()
         ApiConfig.get().loadConfig(false, object : LoadConfigCallback {

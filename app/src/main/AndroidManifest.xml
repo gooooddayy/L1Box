@@ -51,7 +51,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- dm（2026-10-12）：移除「所有文件访问」这个最重的权限。
+         它原来的唯一用途是本地字幕 —— 那会儿用自研文件浏览器从 /sdcard 根目录遍历，
+         Android 11+ 必须索要它。现改为系统文件选择器（SAF）：用户自己选文件，
+         不需要任何存储权限，Android 11+ 上反而更可靠。 -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

@@ -240,9 +240,26 @@ class ProtectedInitJar {
                 bindContext(clz, init);
                 boolean bound = GO_PROXY_STARTED && bindDexLoader(clz, init);
                 boolean tookProxy = false;
+                // 第三态（2026-10-12 dk）：**"反射没抛异常"不等于"它真的初始化了"**。
+                // 这批加固 jar 的 `Init.init` 会先做三道"二次打包"自检（包名／App 名／签名），
+                // 任一不过就 `goto` 跳过 `startGoProxy` 与全部后台线程，只起一个睡 5 秒后自杀的线程，
+                // 并同步打一句带「疑似二次打包」的文案（见 SpiderDebug 的哨兵）。
+                // 若只看返回值，就会把"代理持有者"记给一个**代理根本没起**的 jar ⇒ 后续 jar 手绑
+                // 去连不存在的端口（真机 10-10 12:41:49 `Failed to connect to 127.0.0.1:8964`）、
+                // `/proxy` 放行一个死代理 ⇒ 代理型站点必然失败。
+                // ⇒ 认出来之后语义是"**照常用，但不计入代理持有者**"：
+                //    ⛔ 绝不拒载（ap 轮 458 次拒载＝站点成片消失）；
+                //    ⛔ 绝不 occupyProxy / 不置 GO_PROXY_STARTED / 不 rememberHandBound（它没有任何代理可承接）。
+                boolean selfCheckBailed = false;
                 if (!bound) {
+                    long selfCheckSeq = SpiderDebug.selfCheckSeq();
                     bound = invokeSelfInit(clz);
-                    tookProxy = bound;
+                    if (bound && SpiderDebug.selfCheckFailedSince(selfCheckSeq)) {
+                        selfCheckBailed = true;
+                        tookProxy = false;
+                    } else {
+                        tookProxy = bound;
+                    }
                 }
                 if (!bound) {
                     System.out.println("加固 jar 初始化失败（手绑与 jar 自身入口都不可用），已降级其站点：" + key);
@@ -252,6 +269,8 @@ class ProtectedInitJar {
                     // jar 内部重启了共享代理：本进程唯一的活代理现在归它
                     occupyProxy(clz, key);
                     System.out.println("加固 jar 交还自身入口初始化成功，本地代理已由它接管：" + key);
+                } else if (selfCheckBailed) {
+                    System.out.println("加固 jar 自检未通过（包名/App名/签名）⇒ 它自己跳过了初始化，本地代理未启动；本 jar 照常可用，但不计入代理持有者：" + key);
                 } else {
                     invokeNoArg(clz, "replaceCloudDiskNames");
                     // 手绑成功 ⇒ 它的原生代理引用是有效的（getLoader 已连上正在跑的代理）。
@@ -438,7 +457,14 @@ class ProtectedInitJar {
      *
      * 为什么可以走它：加固 jar 的 `Init.init` 内含宿主白名单校验，校验不过会 `Process.killProcess`
      * 自杀 —— 但那些调用已被 JarKillNeutralizer 在 dex 层改成合法方法名（运行时抛可捕获的
-     * NoSuchMethodError），拿不到控制权的进程级自杀已经不存在。实证：ab→am 全线 28521 次执行 0 崩溃。
+     * NoSuchMethodError），拿不到控制权的进程级自杀已经不存在。
+     *
+     * ⚠️ 但"返回值 true"只代表**反射调用返回了**，不代表它真的初始化成功：
+     * 2026-10-12 反汇编取证确认，这批 jar 的自检不过时会 `goto` 跳过 `startGoProxy` 与全部后台线程，
+     * 只留一个 5 秒后自杀的线程（所以 09-14 那种"28521 次 0 崩溃"的时代已经过去 ——
+     * 是**这份 jar 随 master 自动更新后新加的自检**造成的行为变化）。
+     * ⇒ 判定"它自己跳过了初始化"的唯一可靠信号是那句同步打出的「疑似二次打包」文案，
+     * 由 `SpiderDebug` 的哨兵提供，调用方（init）据此走第三态：照常用、但不计入代理持有者。
      */
     private boolean invokeSelfInit(Class<?> clz) {
         try {

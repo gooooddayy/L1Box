@@ -318,7 +318,19 @@ public class JarLoader {
                     Method method = classInit.getMethod("init", Context.class);
                     // Context 桥接：加固 jar 用 context.getClassLoader() 建内层加载器，
                     // 桥接后内层 payload 的 Toast/Process 同样走拦截链
+                    //
+                    // 2026-10-12（dl）：这条普通分支**不经过 ProtectedInitJar**，所以那边装的哨兵看管不到它；
+                    // 但加固 jar 的三道"二次打包"自检在这里照样会发生（dk 现场实证：17:22:25
+                    // 「App名称不匹配，疑似二次打包」之后紧跟「自定义爬虫代码加载成功」，
+                    // 而 ProtectedInitJar 的三条出口一条都没打 ⇒ 明确是走的这一条）。
+                    // ⇒ 这里**只取一次哨兵、只多打一条日志，绝不改变任何控制流**：
+                    //   该 jar 目前在普通分支下是可用的，动它有回退风险（要改分支走向是另一件事）。
+                    // 取证与判定书：`_l1_docs/30_成功率与崩溃/dk轮G3验证与第三态未触发原因_20261012.md`
+                    long selfCheckSeq = SpiderDebug.selfCheckSeq();
                     method.invoke(null, new JarContextBridge(App.getInstance(), bridgeLoader));
+                    if (SpiderDebug.selfCheckFailedSince(selfCheckSeq)) {
+                        System.out.println("加固 jar 自检未通过，但它走的是普通分支（非家族判据）⇒ 仅记录，不改变装载结果：" + key);
+                    }
                     success = true;
                 }
             }

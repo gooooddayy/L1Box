@@ -520,8 +520,23 @@ public class ApiConfig {
             boolean matched = false;
             boolean loaded = false;
             try {
-                matched = cacheEligible && cache.exists()
+                // dh（2026-10-12）：无论走哪条路，**先确认这份缓存属于当前源**。
+                // 原判据 `(useCache || md5 相等)` 在 useCache=true 时**完全不看内容** ——
+                // 冷启动时若磁盘上的 csp.jar 其实属于**别的源**，会被当成本源的直接命中，
+                // 于是「拿 A 的 spider 跑 B 的站点」并把「B 已加载」登记下来（永久钉死）。
+                // 归属记录由**真下载成功**时写入（loadJarFileAsync 的 markLoaded 分支）。
+                String owner = "";
+                try {
+                    owner = Hawk.get(jarOwnerKey(fileName), "");
+                } catch (Throwable ignored) {
+                }
+                boolean ownedByCurrent = jarKey.equals(owner);
+                matched = cacheEligible && ownedByCurrent && cache.exists()
                         && (useCache || MD5.getFileMd5(cache).equalsIgnoreCase(md5));
+                if (!matched && cacheEligible && cache.exists() && !ownedByCurrent) {
+                    System.out.println("L1Sub: jar 缓存归属不符，不作命中 文件=" + fileName
+                            + " 归属=" + owner + " 当前=" + jarKey);
+                }
                 if (matched) loaded = loader.load(cache.getAbsolutePath());
             } catch (Throwable th) {
                 th.printStackTrace();
@@ -549,8 +564,19 @@ public class ApiConfig {
      */
     private static final Set<String> JAR_DOWNLOADING = ConcurrentHashMap.newKeySet();
 
-    /** dg：jar 已在下载中时，第二次调用的延后重试间隔（不阻塞线程，只拍一拍再看） */
-    private static final long JAR_RETRY_DELAY_MS = 1500L;
+    /**
+     * dh2（2026-10-12）：同一份 jar 已被别的调用方在下载时，**挂在这里等同一份结果**。
+     *
+     * 为什么不再"延后一拍重试"：真机日志里同一个 jar 被并发触发 **4 次** ⇒ 后 3 次各延后 1.5 秒
+     * （合计最多慢约 **4.5 秒**），而这段时间界面就是"更慢地加载"。改成挂等待后，下载一结束
+     * 所有等待者**同时**拿到结果 —— 既不重复下载，也不再无谓等待。
+     *
+     * ⚠️ 通知等待者之前，`loadedJarKeys` 一定已经写好（见 `loadJarFileAsync` 的 MAIN_HANDLER.post：
+     *    先 put 再 callback.success），所以等待者若又发起 loadJar，会命中"已加载"复用，
+     *    不会形成第二次下载。
+     */
+    private static final java.util.Map<String, java.util.List<LoadConfigCallback>> JAR_WAITERS =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * dg：内容是不是 jar/dex。
@@ -588,16 +614,21 @@ public class ApiConfig {
             callback.success();
             return;
         }
-        // dg：互斥 —— 已有同文件下载在途就不再发起第二个请求。
-        // 不在这里阻塞等待（会占住 OkGo 的线程），改为延后一拍重跑；届时多半已命中上面的复用。
-        if (!JAR_DOWNLOADING.add(fileName)) {
-            System.out.println("L1Sub: jar 已在下载中 ⇒ 延后重试 文件=" + fileName);
-            MAIN_HANDLER.postDelayed(() ->
-                    downloadJar(jarUrl, isJarInImg, cache, fileName, jarKey, loader, callback), JAR_RETRY_DELAY_MS);
+        // dh（2026-10-12）：互斥 key 必须是 **jarKey（jarUrl|md5）**，不能是 fileName。
+        // fileName 是所有源共用的物理文件名（一律 "csp.jar"）—— 用它做 key 会把**不同源**串行化：
+        // 弱网下源 A 的下载在途（可挂几十秒）时切到源 B，B 会被反复"延后一拍"（无次数上限），
+        // 表现为「不加载 / 很久才加载」。用 jarKey 后：同一份 jar 的并发仍互斥（防交错写），
+        // 不同源互不阻塞。判据：互斥要防的是"同一份内容被两个流同时写"，与物理文件名无关。
+        if (!JAR_DOWNLOADING.add(jarKey)) {
+            // dh2：已有同一份 jar 在下载 ⇒ 挂上去等它的结果（不再无谓延后 —— 原来 4 次并发
+            // 会让 3 个调用方各等 1.5 秒，界面表现为"换源后要等好几秒才加载"）。
+            System.out.println("L1Sub: jar 已在下载中 ⇒ 挂上等待同一份结果 jar=" + jarUrl);
+            JAR_WAITERS.computeIfAbsent(jarKey,
+                    k -> java.util.Collections.synchronizedList(new java.util.ArrayList<>())).add(callback);
             return;
         }
         // dg：把最终回调包一层 —— 任何终态（装载成功/失败/无响应体）都先摘掉"下载中"标记，
-        // 避免标记泄漏导致后续同文件下载永远被延后。
+        // 避免标记泄漏导致后续同文件下载永远被延后。dh：key 与 add 一致，用 jarKey。
         final LoadConfigCallback fin = new LoadConfigCallback() {
             @Override
             public void retry() {
@@ -605,14 +636,16 @@ public class ApiConfig {
 
             @Override
             public void success() {
-                JAR_DOWNLOADING.remove(fileName);
+                JAR_DOWNLOADING.remove(jarKey);
                 callback.success();
+                notifyJarWaiters(jarKey, true, null);
             }
 
             @Override
             public void error(String msg) {
-                JAR_DOWNLOADING.remove(fileName);
+                JAR_DOWNLOADING.remove(jarKey);
                 callback.error(msg);
+                notifyJarWaiters(jarKey, false, msg);
             }
         };
         OkGo.<File>get(jarUrl)
@@ -661,7 +694,8 @@ public class ApiConfig {
             @Override
             public void onSuccess(Response<File> response) {
                 if (response.body() != null && response.body().exists()) {
-                    loadJarFileAsync(response.body(), fileName, jarKey, loader, fin, null);
+                    // 真下载成功 ⇒ 可以登记"该源已加载"（并落盘归属）
+                    loadJarFileAsync(response.body(), fileName, jarKey, loader, fin, null, true);
                 } else {
                     fin.error("");
                 }
@@ -670,10 +704,27 @@ public class ApiConfig {
             @Override
             public void onError(Response<File> response) {
                 super.onError(response);
-                // 弱网 / 内容非法兜底：本地还有旧的 jar 缓存 → 先用旧的顶上，别让整个源瘫掉
+                // 弱网 / 内容非法兜底：本地还有旧的 jar 缓存 → 先用旧的顶上，别让整个源瘫掉。
+                // dh（2026-10-12）：**必须先确认这份缓存属于当前源**（归属 = 上次真下载成功时记下的 jarKey）。
+                // 归属不符 ⇒ 文件是**别的源**的 ⇒ **如实失败**，绝不拿旧源的 jar 冒充新源：
+                //   ① 串源：拿 A 的 spider 跑 B 的站点
+                //   ② 假成功：上层以为 B 已就绪
+                //   ③ 永久钉死（最严重）：把「B 已加载」登记在 A 的文件上 ⇒ 下游复用判据直接命中
+                //      ⇒ **B 从此再也不下载真 jar**（正是用户说的"用缓存拦截了源的加载"）
                 if (cache.exists() && cache.length() > 0) {
-                    loadJarFileAsync(cache, fileName, jarKey, loader, fin, "网络不佳，已使用缓存数据源");
-                    return;
+                    String owner = "";
+                    try {
+                        owner = Hawk.get(jarOwnerKey(fileName), "");
+                    } catch (Throwable ignored) {
+                    }
+                    if (jarKey.equals(owner)) {
+                        // 同一个源**自己的**旧 jar：允许兜底（断网容错保留），但**不登记**
+                        // ⇒ 下次仍会尝试真下载，不会把这个降级状态固化下来
+                        loadJarFileAsync(cache, fileName, jarKey, loader, fin, "网络不佳，已使用缓存数据源", false);
+                        return;
+                    }
+                    System.out.println("L1Sub: jar 缓存归属不符，拒绝兜底 文件=" + fileName
+                            + " 归属=" + owner + " 当前=" + jarKey);
                 }
                 fin.error("");
             }
@@ -681,11 +732,47 @@ public class ApiConfig {
     }
 
     /**
+     * dh2（2026-10-12）：把同一份 jar 的下载结果发给所有等待者。
+     *
+     * 各自独立 try/catch —— 一个调用方抛异常不能影响其他调用方拿到结果。
+     * 先 remove 再遍历：避免通知过程中又有新等待者进来（那会重新发起一次下载，是正确行为）。
+     */
+    private static void notifyJarWaiters(String jarKey, boolean ok, String msg) {
+        java.util.List<LoadConfigCallback> waiters = JAR_WAITERS.remove(jarKey);
+        if (waiters == null || waiters.isEmpty()) return;
+        System.out.println("L1Sub: jar 下载结束 ⇒ 通知等待者 " + waiters.size() + " 个 成功=" + ok);
+        for (LoadConfigCallback cb : waiters) {
+            try {
+                if (ok) cb.success();
+                else cb.error(msg == null ? "" : msg);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * dh（2026-10-12）：jar 缓存的**归属键**。
+     *
+     * 为什么需要：`files/csp.jar` 是所有源共用的同一物理文件，磁盘上看不出它属于哪个源。
+     * 弱网兜底（网络失败时拿本地文件顶上）若不加归属判断，就会把**上一个源的 jar** 当成
+     * 当前源的 jar 用 —— 更糟的是会把"当前源已就绪"登记下来，让下游复用判据永久命中，
+     * 该源从此再也不下载真 jar（用户实测「有些源本来能用、忽然用不了」）。
+     *
+     * 每次**真下载成功并落盘**后写入归属；兜底前比对，不符则如实失败。
+     */
+    private static String jarOwnerKey(String fileName) {
+        return "l1_jar_owner_" + fileName;
+    }
+
+    /**
      * 加载本地 jar 文件：仅「加载」这一步放后台线程，完成后回主线程回调。
      * @param successToast 加载成功后的提示，null 表示不提示
+     * @param markLoaded   true＝这是一次**真下载**的结果，可以登记"该源已加载"；
+     *                     false＝这是**缓存兜底**（用的是本地旧文件），只保证这一次能跑，
+     *                     不登记 —— 否则降级会被下游复用判据固化成永久状态。
      */
     private void loadJarFileAsync(File jar, String fileName, String jarKey, JarLoader loader,
-                                  LoadConfigCallback callback, String successToast) {
+                                  LoadConfigCallback callback, String successToast, boolean markLoaded) {
         jarLoadPool.execute(() -> {
             boolean ok = false;
             try {
@@ -696,7 +783,14 @@ public class ApiConfig {
             final boolean success = ok;
             MAIN_HANDLER.post(() -> {
                 if (success) {
-                    loadedJarKeys.put(fileName, jarKey);
+                    if (markLoaded) {
+                        loadedJarKeys.put(fileName, jarKey);
+                        // 归属持久化：跨进程也记得"这份 csp.jar 是哪个源的"，供下次弱网兜底判断
+                        try {
+                            Hawk.put(jarOwnerKey(fileName), jarKey);
+                        } catch (Throwable ignored) {
+                        }
+                    }
                     if (successToast != null) {
                         try {
                             android.widget.Toast.makeText(App.getInstance(), successToast, android.widget.Toast.LENGTH_SHORT).show();

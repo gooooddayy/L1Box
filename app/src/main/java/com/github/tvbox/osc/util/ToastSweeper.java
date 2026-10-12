@@ -42,6 +42,75 @@ public class ToastSweeper {
     private static boolean frameScheduled = false;
     /** 当前前台 Activity（decor 监护目标） */
     private static Activity topActivity;
+
+    /** 兜底轮询间隔（前台自续期用） */
+    private static final long POLL_INTERVAL_MS = 250L;
+    /** 兜底轮询的 Handler（仅前台自续期，退后台停摆） */
+    private static Handler pollHandler;
+    /** 是否已有一条待执行的轮询（幂等用：不清空、不缩短已有的那一拍） */
+    private static boolean pollScheduled = false;
+    /** 轮询当前是否处于"已停摆"状态（仅用于"回前台重拉"这条日志，便于真机验证） */
+    private static boolean pollStopped = false;
+
+    /**
+     * 兜底轮询：**只在有前台 Activity 时自续期**。
+     *
+     * 为什么改成"前台才转"：退到后台后 `sweepDecor()` 一看 `topActivity == null` 就立即返回，
+     * 帧循环也早就停摆 ⇒ 这个 250ms 轮询在后台**每一次都是纯空转**，却每秒把主线程唤醒 4 次。
+     * 它是全应用**唯一**的周期性后台唤醒（其余调度都是一次性的：缓存清理、EpgUtil、看门狗等），
+     * 而它原本设想的"负责在后台重新拉起帧循环"这件事，`onActivityResumed` 早已覆盖
+     * （回前台的那一刻就会 `scheduleFrame()`），且生命周期事件比定时器更可靠（不会被冻结/延迟影响）。
+     * 前台行为与改前**完全一致**：首拍仍是启动后 2 秒、之后每 250ms 一次，一拍不多一拍不少。
+     */
+    private static final Runnable FALLBACK_POLL = new Runnable() {
+        @Override
+        public void run() {
+            if (failed) return;
+            pollScheduled = false;
+            sweep();
+            if (resumedCount > 0) {
+                scheduleFallbackPoll(POLL_INTERVAL_MS);
+            } else {
+                // 没有前台 Activity：不再续期。回前台由 onActivityResumed / onActivityStarted 重新拉起。
+                // 正常情况下走不到这里（pause/stopped 会立即 cancelFallbackPoll），
+                // 留着是为了兜住"计数被意外扣到 0 却没收到生命周期回调"的病态情况。
+                pollStopped = true;
+            }
+        }
+    };
+
+    /**
+     * 排下一拍兜底轮询。**幂等且不缩短已有的一拍**：
+     * 若已有一条待执行任务（例如冷启动时排的那 2 秒首拍），直接返回 ——
+     * 否则"回前台就重排"会把首拍从 2 秒提前到 250ms，白白改了冷启动期行为。
+     */
+    private static void scheduleFallbackPoll(long delayMs) {
+        if (failed || pollHandler == null) return;
+        if (pollStopped) {
+            pollStopped = false;
+            android.util.Log.i(TAG, "回到前台：兜底轮询重新拉起");
+        }
+        if (pollScheduled) return;
+        pollScheduled = true;
+        pollHandler.postDelayed(FALLBACK_POLL, delayMs);
+    }
+
+    /**
+     * 停掉兜底轮询（最后一个前台页面 pause/stopped 时调用）：撤销待执行任务并复位幂等标记。
+     *
+     * 日志刻意打在**这里**而不是定时任务里：任务已被撤销 ⇒ 它根本不会再跑一次，
+     * 把日志放在任务里等于"永远看不到"（10-12 首版就是这样，属于"日志说谎"）。
+     * 且只在"本来确实在转"时记一条，避免 pause 与 stopped 各记一遍。
+     */
+    private static void cancelFallbackPoll() {
+        if (pollHandler != null) pollHandler.removeCallbacks(FALLBACK_POLL);
+        if (pollScheduled && !pollStopped) {
+            android.util.Log.i(TAG, "前台页面已消失：兜底轮询停摆（不再空转唤醒）");
+        }
+        pollScheduled = false;
+        pollStopped = true;
+    }
+
     /** 已隐藏的树内横幅：只透明不删除，每帧强制保持隐藏，避免 jar 重绘拉锯 */
     private static final java.util.HashSet<View> hiddenBanners = new java.util.HashSet<View>();
     /** 已设置 add 监听的 content 容器，避免重复设置 */
@@ -171,31 +240,37 @@ public class ToastSweeper {
                     resumedCount++;
                     topActivity = a;
                     scheduleFrame(); // 回前台立即拉起帧循环
+                    scheduleFallbackPoll(POLL_INTERVAL_MS); // 兜底轮询同步拉起（后台停摆时不续期）
                 }
 
                 @Override
                 public void onActivityPaused(Activity a) {
                     resumedCount = Math.max(0, resumedCount - 1);
                     if (topActivity == a) topActivity = null;
+                    // 最后一个前台 Activity 也退了 ⇒ 立即停掉兜底轮询，不留"后台空转"。
+                    // 返回前台时 onActivityResumed/onActivityStarted 会重新排上。
+                    if (resumedCount == 0) cancelFallbackPoll();
                 }
-                // 其余生命周期与本逻辑无关，空实现
+                // 其余生命周期与本逻辑无关
                 @Override public void onActivityCreated(Activity a, android.os.Bundle b) { }
-                @Override public void onActivityStarted(Activity a) { }
-                @Override public void onActivityStopped(Activity a) { }
+                // started 早于 resumed：只在确实还有前台 Activity 时才有意义，
+                // 作为额外一道"事件驱动"的重拉保险（比定时器可靠，不受冻结/延迟影响）。
+                @Override public void onActivityStarted(Activity a) {
+                    if (resumedCount > 0) scheduleFallbackPoll(POLL_INTERVAL_MS);
+                }
+                // stopped 之后不一定还有 pause（异常路径/被系统直接 stop）：同样顺手停掉轮询，
+                // 保证"只要没有前台页面就一定没有周期调度"。
+                @Override public void onActivityStopped(Activity a) {
+                    if (resumedCount == 0) cancelFallbackPoll();
+                }
                 @Override public void onActivitySaveInstanceState(Activity a, android.os.Bundle outState) { }
                 @Override public void onActivityDestroyed(Activity a) { }
             });
         } catch (Throwable ignored) {
         }
-        // 兜底轮询（250ms，成本微乎其微）
-        Handler h = new Handler(Looper.getMainLooper());
-        h.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (!failed) sweep();
-                h.postDelayed(this, 250);
-            }
-        }, 2000);
+        // 兜底轮询启动。首拍仍等 2 秒（让冷启动先跑完），此后**仅在前台**自续期。
+        pollHandler = new Handler(Looper.getMainLooper());
+        scheduleFallbackPoll(2000);
     }
 
     /** 幂等地请求下一帧回调；doFrame 内前台自续，后台停摆 */

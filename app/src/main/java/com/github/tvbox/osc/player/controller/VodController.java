@@ -1009,6 +1009,28 @@ public class VodController extends BaseController {
         applyRotateBtnVisibility(mBottomVisible);
     }
 
+    /**
+     * dh（2026-10-12）：播放/暂停状态变化时，若在画中画里就刷新它的按钮图标。
+     *
+     * 为什么放这里：控制条自己的图标（mIvPlayStatus）本来就在这两个分支更新，画中画是同一份
+     * 播放状态的另一种呈现 —— 只在进入画中画那一刻构建一次，就会一直显示"播放"图标（用户报的样式问题）。
+     * PiP 参数由宿主 Activity 持有，控制器只负责通知；沿 ContextWrapper 链找宿主，找不到就静默跳过。
+     */
+    private void notifyPipStateChanged() {
+        if (!mInPip) return;
+        try {
+            android.content.Context c = getContext();
+            while (c instanceof android.content.ContextWrapper
+                    && !(c instanceof com.github.tvbox.osc.ui.activity.DetailActivity)) {
+                c = ((android.content.ContextWrapper) c).getBaseContext();
+            }
+            if (c instanceof com.github.tvbox.osc.ui.activity.DetailActivity) {
+                ((com.github.tvbox.osc.ui.activity.DetailActivity) c).refreshPipParams();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     public interface VodControlListener {
         void chooseSeries();
 
@@ -1190,6 +1212,8 @@ public class VodController extends BaseController {
                 stopBufferTicker(); // 进度表已接管刷新，暂停期的补刷停掉（两条路不会同时写）
                 startProgress();
                 mIvPlayStatus.setImageResource(R.drawable.ic_pause);
+                // dh（2026-10-12）：控制条图标已换 ⇒ 画中画里那个也要同步
+                notifyPipStateChanged();
                 // #3（09-23）：起播成功＝错误提示的使命已结束，收掉它。
                 // 只收提示层，不碰任何判死秒数、不碰兜底链顺序。
                 if (listener != null) listener.playing();
@@ -1197,6 +1221,9 @@ public class VodController extends BaseController {
             case VideoView.STATE_PAUSED:
                 mIvPlayStatus.setImageResource(R.drawable.ic_play);
                 startBufferTicker(); // 暂停期继续补刷灰色缓冲段
+                // dh：画中画按钮同步成"播放"。放在补刷之后 —— 保持「暂停态紧跟 startBufferTicker」
+                // 这个原有结构，别把既有的闸门断言挤出行窗口。
+                notifyPipStateChanged();
                 break;
             case VideoView.STATE_ERROR:
                 stopBufferTicker();

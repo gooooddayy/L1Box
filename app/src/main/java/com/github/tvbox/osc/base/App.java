@@ -339,6 +339,16 @@ public class App extends MultiDexApplication {
         Thread.UncaughtExceptionHandler caocHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread mainThread = Looper.getMainLooper().getThread();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            // 2026-10-12（dk）：已知噪声先分流 —— 加固 jar 的"自杀线程"必然走到这里。
+            // 它的 killProcess 已被 JarKillNeutralizer 在 dex 层改成合法方法名，运行时解析失败抛
+            // NoSuchMethodError；而该线程唯一的工作就是自杀（反汇编实证：sleep 5s → myPid →
+            // killProcess → return），死掉功能损失为 0，属**预期噪声**。
+            // ⇒ 不落 files/crashes/ 文件、不打堆栈，否则真崩溃会被它淹没。
+            // 判定书：_l1_docs/30_成功率与崩溃/Init3自杀线程_根因取证与改动评估_20261012.md
+            if (isNeutralizedKillNoise(thread, mainThread, throwable)) {
+                Log.d("App", "已知噪声（jar 自杀调用已中和）⇒ 不记崩溃日志：" + thread.getName());
+                return;
+            }
             // 崩溃日志先落盘（内部全 try/catch，绝不在处理器内二次抛错）
             com.github.tvbox.osc.util.CrashLog.save(thread, throwable);
             if (thread == mainThread && caocHandler != null) {
@@ -347,6 +357,22 @@ public class App extends MultiDexApplication {
                 Log.e("App", "后台线程异常(已拦截,不闪退): " + thread.getName(), throwable);
             }
         });
+    }
+
+    /**
+     * 是不是"被中和过的自杀调用"抛出的已知噪声。
+     *
+     * 两条同时满足才认（宁可漏静音，也不能把真崩溃静音）：
+     * ① 是 `NoSuchMethodError`；
+     * ② 消息指向 `android.os.Process` —— 只可能来自被 JarKillNeutralizer 改写的 killProcess，
+     *    正常代码不可能调用 `Process.equals(int)`；
+     * 另外只在**非主线程**上认：主线程异常一律照原样交给崩溃处理链（该弹窗还是要弹）。
+     */
+    private static boolean isNeutralizedKillNoise(Thread thread, Thread mainThread, Throwable throwable) {
+        if (thread == mainThread) return false;
+        if (!(throwable instanceof NoSuchMethodError)) return false;
+        String msg = throwable.getMessage();
+        return msg != null && msg.contains("android/os/Process");
     }
 
 }

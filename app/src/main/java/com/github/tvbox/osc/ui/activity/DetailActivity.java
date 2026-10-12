@@ -994,25 +994,9 @@ public class DetailActivity extends BaseVbActivity<ActivityDetailBinding> {
             intent.addCategory(Intent.CATEGORY_HOME);
             startActivity(intent);
 
-            // Calculate Video Resolution
-            int vWidth = playFragment.getPlayer().getVideoSize()[0];
-            int vHeight = playFragment.getPlayer().getVideoSize()[1];
-            Rational ratio;
-            if (vWidth != 0) {
-                if ((((double) vWidth) / ((double) vHeight)) > 2.39) {
-                    vHeight = (int) (((double) vWidth) / 2.35);
-                }
-                ratio = new Rational(vWidth, vHeight);
-            } else {
-                ratio = new Rational(16, 9);
-            }
-            List<RemoteAction> actions = new ArrayList<>();
-            actions.add(generateRemoteAction(android.R.drawable.ic_media_previous, IntentKey.BROADCAST_ACTION_PREV, "Prev", "Play Previous"));
-            actions.add(generateRemoteAction(android.R.drawable.ic_media_play, IntentKey.BROADCAST_ACTION_PLAYPAUSE, "Play", "Play/Pause"));
-            actions.add(generateRemoteAction(android.R.drawable.ic_media_next, IntentKey.BROADCAST_ACTION_NEXT, "Next", "Play Next"));
-            PictureInPictureParams params = new PictureInPictureParams.Builder()
-                    .setAspectRatio(ratio)
-                    .setActions(actions).build();
+            // dh（2026-10-12）：参数构建抽成 buildPipParams()，这样"播放状态变化"时也能刷新
+            // 画中画中间按钮的图标（原来图标写死 ic_media_play，播放中仍显示 ▶）。
+            PictureInPictureParams params = buildPipParams();
             playFragment.getPlayer().postDelayed(() -> {//代码模拟home键时会立即执行,toggleFullPreview中竖屏有切换横屏操作,
                 if (!fullWindows) {
                     toggleFullPreview();
@@ -1026,6 +1010,57 @@ public class DetailActivity extends BaseVbActivity<ActivityDetailBinding> {
                     playFragment.getController().togglePlay();
                 }
             }, 400);
+        }
+    }
+
+    /**
+     * dh（2026-10-12）：构建画中画参数（含三个按钮）。
+     *
+     * 关键：中间按钮的图标**按当前播放状态**选 —— 播放中显示"暂停"、暂停中显示"播放"
+     * （暂停时显示 ▶ 的语义是"点它继续"，与 App 内控制条一致）。
+     * 原来这里写死 `ic_media_play`，于是播放中也显示 ▶ —— 用户看到"暂停/播放状态不对"。
+     */
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private PictureInPictureParams buildPipParams() {
+        // Calculate Video Resolution
+        int vWidth = playFragment.getPlayer().getVideoSize()[0];
+        int vHeight = playFragment.getPlayer().getVideoSize()[1];
+        Rational ratio;
+        if (vWidth != 0) {
+            if ((((double) vWidth) / ((double) vHeight)) > 2.39) {
+                vHeight = (int) (((double) vWidth) / 2.35);
+            }
+            ratio = new Rational(vWidth, vHeight);
+        } else {
+            ratio = new Rational(16, 9);
+        }
+        boolean playing = false;
+        try {
+            playing = playFragment.getPlayer().isPlaying();
+        } catch (Throwable ignored) {
+        }
+        List<RemoteAction> actions = new ArrayList<>();
+        actions.add(generateRemoteAction(android.R.drawable.ic_media_previous, IntentKey.BROADCAST_ACTION_PREV, "Prev", "Play Previous"));
+        actions.add(generateRemoteAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                IntentKey.BROADCAST_ACTION_PLAYPAUSE, playing ? "Pause" : "Play", "Play/Pause"));
+        actions.add(generateRemoteAction(android.R.drawable.ic_media_next, IntentKey.BROADCAST_ACTION_NEXT, "Next", "Play Next"));
+        return new PictureInPictureParams.Builder()
+                .setAspectRatio(ratio)
+                .setActions(actions).build();
+    }
+
+    /**
+     * dh（2026-10-12）：播放状态变化时刷新画中画按钮图标（只在**确实处于画中画**时生效）。
+     * 由播放器控制器在 STATE_PLAYING / STATE_PAUSED 时回调。
+     */
+    public void refreshPipParams() {
+        if (!Utils.supportsPiPMode()) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        try {
+            if (isInPictureInPictureMode()) {
+                setPictureInPictureParams(buildPipParams());
+            }
+        } catch (Throwable ignored) {
         }
     }
 
