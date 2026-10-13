@@ -451,6 +451,21 @@ public class PlayFragment extends BaseLazyFragment {
     /** 已经给过落点提示的进度键：解析重试等重复 prepared 时不再弹第二次 */
     private String mResumeTipShownKey = null;
 
+    /**
+     * do（2026-10-13）：播放页「刷新」＝重载并自动回到点它那一刻的位置。
+     * 与片头跳过（getSavedProgress 钩子）和中央落点提示（showResumeTip）**走完全不同的路径**，
+     * 三者互不干涉：本组字段只在「刷新」按钮被点击后生效，其它入口一律不置位。
+     */
+    private long mRefreshResumeMs = 0;           // 要回去的位置（毫秒）
+    private boolean mRefreshIntent = false;      // 刷新意图：点刷新/切内核起为真，seek 落地即结束
+    private boolean mRefreshSeekApplied = false; // 本意图内是否已回位（降级重 prepare 不重复跳）
+    /** dp（2026-10-13）：回位代次 —— 连点刷新时，旧一次的回位任务作废（防两次 seek 互踩） */
+    private int mRefreshGen = 0;
+    /** 回位门槛：看过不足 3 秒不值得跳（与落点提示的 10 秒口径各自独立，别混用） */
+    private static final long REFRESH_RESUME_MIN_MS = 3000;
+    /** 片尾保护：回位点最多落到「总时长-3 秒」，避免一回去就播完 */
+    private static final long REFRESH_RESUME_TAIL_MS = 3000;
+
     public long getSavedProgress(String url) {
         int st = getSkipIntroSec();
         long skip = st * 1000L;
@@ -489,6 +504,44 @@ public class PlayFragment extends BaseLazyFragment {
             mResumeTipShownKey = progressKey;
             ToastUtils.showShort("已跳过片头 " + skipSec + " 秒");
         }
+    }
+
+    /**
+     * do（2026-10-13）：刷新回位 —— 就绪后把位置拨回"点刷新那一刻"，无任何提示。
+     *
+     * 为什么不走内核的自动跳钩子（getSavedProgress）：那是「片头跳过」在用的同一条管道，
+     * 共用迟早互相牵连；这里坚持走独立的显式 seek，两者任何一边改动都不会波及另一边。
+     *
+     * 为什么必须 post 一帧再 seek：本方法由 prepared() 触发，而 prepared() 是**同步**回调
+     * （发生在 VideoView.onPrepared() 内部）——它后面还跟着「片头跳过」那次 seek
+     * （内部 mCurrentPosition > 0 时执行），在此直接 seek 会被后发的那次盖掉；
+     * 推迟到消息队列之后执行，才能保证最终生效的是刷新回位。
+     */
+    private void applyRefreshResume() {
+        if (mRefreshSeekApplied || mVideoView == null) return;
+        final long resumePos = mRefreshResumeMs;
+        final int gen = mRefreshGen; // dp：本任务属于哪一次采集
+        mVideoView.post(() -> {
+            if (gen != mRefreshGen) return; // dp：期间又点了新的刷新 ⇒ 本任务作废
+            if (mRefreshSeekApplied || !mRefreshIntent || mVideoView == null) return;
+            long pos = resumePos;
+            long dur = 0;
+            try {
+                dur = mVideoView.getDuration();
+            } catch (Throwable ignored) {
+            }
+            if (dur > 0 && pos > dur - REFRESH_RESUME_TAIL_MS) {
+                pos = Math.max(0, dur - REFRESH_RESUME_TAIL_MS);
+            }
+            if (pos <= 0) {
+                mRefreshIntent = false; // 没有可回的位置：意图到此为止
+                return;
+            }
+            mRefreshSeekApplied = true;
+            mRefreshIntent = false; // dp：落地即清 —— 不再依赖 playing 事件清位（它有竞态，曾让回位丢失）
+            mVideoView.seekTo(pos);
+            PlayTrace.stage("起播", "刷新回位 " + pos + "ms");
+        });
     }
 
     private void initView() {
@@ -607,6 +660,47 @@ public class PlayFragment extends BaseLazyFragment {
                 mLastErrClass = null; // I2：用户主动重播＝新签名
                 mLastErrUrl = null;
                 mRetryGen++; // 用户主动重播，与手动「重试」同理：排队中的自动重取一律作废
+                // do（2026-10-13）：刷新＝重载并回到原位。点击这一刻先把位置记下来（此时播放器还在，
+                // 取到的就是"上一位置"）；重播（replay=true）保持原样（清该集进度、从头播）。
+                // dp（2026-10-13 修复）：真机实测两种"没跳"——① 切换瞬间内核读空（返回 0/0）被直接放弃；
+                //   ② 出画事件排在回位 seek 之前把意图清掉。这里给 ① 加进度库兜底 + 跳过也留痕。
+                if (!replay) {
+                    long nowPos = 0, nowDur = 0;
+                    try {
+                        if (mVideoView != null) {
+                            nowPos = mVideoView.getCurrentPosition();
+                            nowDur = mVideoView.getDuration();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    boolean captured = false;
+                    String src = "内核";
+                    if (nowPos >= REFRESH_RESUME_MIN_MS && nowDur > 0) {
+                        captured = true;
+                    } else if (nowPos <= 0 && nowDur <= 0) {
+                        // 内核读空（起播/释放的瞬间）：用进度库兜底——它每秒都在刷新，≈刚才的位置。
+                        // 注意此时无法区分真直播与读空；真直播走的是"pos>0 且 dur==0"那条，不会进这里。
+                        long fb = (progressKey == null) ? 0 : ProgressStore.get(progressKey);
+                        if (fb >= REFRESH_RESUME_MIN_MS) {
+                            nowPos = fb;
+                            captured = true;
+                            src = "进度库";
+                        }
+                    }
+                    if (captured) {
+                        mRefreshResumeMs = nowPos;
+                        mRefreshIntent = true;
+                        mRefreshSeekApplied = false;
+                        mRefreshGen++; // 新一次采集：旧的回位任务作废
+                        PlayTrace.stage("起播", "刷新回位点 " + nowPos + "ms 源=" + src);
+                    } else {
+                        mRefreshIntent = false;
+                        mRefreshResumeMs = 0;
+                        mRefreshSeekApplied = false;
+                        // 跳过也留痕：下次真机"没跳"时，这一行直接说明按下瞬间读到了什么
+                        PlayTrace.stage("起播", "刷新回位点 跳过 pos=" + nowPos + " dur=" + nowDur);
+                    }
+                }
                 play(replay);
             }
 
@@ -696,7 +790,12 @@ public class PlayFragment extends BaseLazyFragment {
                             + "ms 内核=" + getCurrentPlayerItemName());
                 }
                 initSubtitleView();
-                showResumeTip();
+                if (mRefreshIntent) {
+                    // do：刷新＝用户主动重载 ⇒ 直接回原位，不走中央落点提示（两者互斥，绝不同时出现）
+                    applyRefreshResume();
+                } else {
+                    showResumeTip();
+                }
             }
 
             @Override
@@ -706,6 +805,9 @@ public class PlayFragment extends BaseLazyFragment {
                 // 已经救回来、画面正常播放之后继续压在屏幕上 —— 用户看到的是"提示还在＝还没好"。
                 // 这里只做收尾，不动判死秒数、不动兜底顺序、不动提示文案。
                 hideTip();
+                // dp（2026-10-13）：这里**不再**清刷新意图 —— 真机日志抓到过「出画事件排队在回位 seek
+                // 之前」的竞态（意图被提前清掉、回位丢失：日志里只有"回位点"没有"回位"）。
+                // 现在由回位任务落地时自清（applyRefreshResume），出画先后都不影响。
             }
 
             @Override
@@ -2435,6 +2537,8 @@ public class PlayFragment extends BaseLazyFragment {
             mLastErrUrl = null;
             mRefetchTried = 0; // P1：换集＝新的一集，重新取链的护栏重新给满
             mPlaybackHadStarted = false;
+            mRefreshIntent = false; // do：换集与上一次刷新的回位意图无关（新一集有自己的进度）
+            mRefreshSeekApplied = false;
             mRetryGen++; // 换集后上一集排队的重取必须作废（新一集会有自己的取链）
             mEpisodeStartAt = System.currentTimeMillis(); // 换集＝新的一集，重播预算重新给满
             fbKey = null;
@@ -2460,6 +2564,9 @@ public class PlayFragment extends BaseLazyFragment {
         if (reset) {
             ProgressStore.remove(progressKey);
             CacheManager.delete(MD5.string2MD5(subtitleCacheKey), 0);
+            // do：重播＝从头播 ⇒ 刷新回位意图作废（防御性清位，正常入口不会带意图进来）
+            mRefreshIntent = false;
+            mRefreshSeekApplied = false;
         }
         if (Jianpian.isJpUrl(vs.url)) {//荐片地址特殊判断
             String jp_url = vs.url;

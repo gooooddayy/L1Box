@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>L1Box dp 版测试清单 · 刷新回位</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --line:#e6e9ee; --ink:#1b1f26; --dim:#6b7480;
+  --acc:#2f6df6; --ok:#12a150; --okbg:#e8f8ef; --bad:#d9372b; --badbg:#fdecea;
+  --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  padding-bottom:80px;
+}
+header{
+  position:sticky; top:0; z-index:20;
+  background:rgba(246,247,249,.86); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line); padding:16px 22px 12px;
+}
+.h1{font-size:17px;font-weight:650;letter-spacing:.2px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.h1 .tag{font-size:11.5px;font-weight:500;color:var(--dim);background:#eceff4;border-radius:6px;padding:2px 7px}
+.meta{margin-top:5px;font-size:12px;color:var(--dim);font-family:ui-monospace,Consolas,monospace}
+.bar{height:7px;border-radius:99px;background:#e4e8ee;overflow:hidden;margin-top:11px}
+.bar>i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,#2f6df6,#12a150);
+  transition:width .45s cubic-bezier(.22,1,.36,1)}
+.stats{display:flex;gap:16px;margin-top:9px;font-size:12.5px;align-items:center;flex-wrap:wrap}
+.stats b{font-weight:600}
+.s-ok{color:var(--ok)} .s-bad{color:var(--bad)} .s-dim{color:var(--dim)}
+#reset{margin-left:auto;font:inherit;font-size:12px;color:var(--dim);background:#fff;
+  border:1px solid var(--line);border-radius:8px;padding:5px 12px;cursor:pointer;transition:.18s}
+#reset:hover{color:var(--bad);border-color:#f2c9c4;background:#fff8f7}
+main{max-width:880px;margin:0 auto;padding:22px}
+section{margin-bottom:26px}
+.ghead{display:flex;align-items:center;gap:9px;margin:0 0 12px;padding-left:2px}
+.ghead .badge{
+  width:23px;height:23px;border-radius:7px;display:grid;place-items:center;
+  font-size:12.5px;font-weight:700;color:#fff;background:var(--acc);flex:none}
+section.static .ghead .badge{background:var(--ok)}
+.ghead h2{font-size:14.5px;margin:0;font-weight:650}
+.ghead p{margin:0;font-size:12px;color:var(--dim);flex:1 1 100%;padding-left:32px;margin-top:-4px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px 13px;margin-bottom:10px;position:relative;overflow:hidden;
+  transition:border-color .22s,box-shadow .22s,transform .22s;
+}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--line);transition:background .22s}
+.card:hover{box-shadow:0 2px 12px rgba(27,31,38,.05)}
+.card.pass{border-color:#c6ead6} .card.pass::before{background:var(--ok)}
+.card.fail{border-color:#f3cbc6} .card.fail::before{background:var(--bad)}
+.ctop{display:flex;align-items:flex-start;gap:11px}
+.id{font:600 12px/20px ui-monospace,Consolas,monospace;color:var(--dim);
+  background:#eef1f6;border-radius:6px;padding:0 7px;flex:none;margin-top:1px;
+  transition:.22s}
+.card.pass .id{background:var(--okbg);color:var(--ok)}
+.card.fail .id{background:var(--badbg);color:var(--bad)}
+.ctitle{font-size:14.5px;font-weight:600;flex:1;margin-top:1px}
+.pick{display:flex;gap:6px;flex:none}
+.pick button{
+  font:inherit;font-size:12px;padding:4px 11px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--dim);
+  transition:transform .14s,background .18s,color .18s,border-color .18s;
+}
+.pick button:active{transform:scale(.94)}
+.pick button[data-on="pass"].on{background:var(--ok);border-color:var(--ok);color:#fff}
+.pick button[data-on="fail"].on{background:var(--bad);border-color:var(--bad);color:#fff}
+.why{color:var(--dim);font-size:12.4px;margin-top:7px}
+.row{display:flex;gap:8px;font-size:13.2px;margin-top:5px;align-items:baseline}
+.row .k{flex:none;color:var(--dim);font-size:12px;min-width:46px}
+.row .v{flex:1}
+.expect{background:#f4f7fb;border-radius:9px;padding:8px 11px;margin-top:9px;font-size:13px}
+.expect .k{color:var(--acc);font-weight:600;font-size:12px}
+.expect ul{margin:4px 0 0;padding-left:17px}
+.expect li{margin:1px 0}
+.note{margin-top:9px}
+.note input{
+  width:100%;font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:9px;background:#fbfcfd;color:var(--ink);outline:none;transition:.18s}
+.note input:focus{border-color:var(--acc);background:#fff;box-shadow:0 0 0 3px rgba(47,109,246,.09)}
+.card-static{display:flex;gap:10px;align-items:flex-start;font-size:13.3px;
+  padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+.card-static .ck{color:var(--ok);flex:none;font-weight:700}
+footer{max-width:880px;margin:0 auto;padding:8px 22px 0;font-size:12px;color:var(--dim)}
+.anim{animation:pop .34s cubic-bezier(.22,1,.36,1)}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.012)}100%{transform:scale(1)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h1">L1Box <span>dp 版测试清单 · 刷新回位</span>
+    <span class="tag" id="tagline">1.0.0 · dp · 2026-10-13</span>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div class="bar"><i id="pbar"></i></div>
+  <div class="stats">
+    <span class="s-dim">已判 <b id="n-done">0</b>/<b id="n-total">0</b></span>
+    <span class="s-ok">通过 <b id="n-ok">0</b></span>
+    <span class="s-bad">失败 <b id="n-bad">0</b></span>
+    <button id="reset">清空重测</button>
+  </div>
+</header>
+
+<main id="app"></main>
+<footer>判定结果自动保存在本机浏览器，关掉再打开还在。全部测完把「不通过」的编号告诉我即可（C 组请注明是否接受）。</footer>
+
+<script>
+const GROUPS = [
+  {
+    k:'A', cls:'', title:'核心功能：刷新 = 重载 + 自动回原位',
+    desc:'「刷新」在播放设置弹窗里（播放控制条点「设置」打开）。判定口径：重新加载后直接回到点它那一刻的位置，全程无提示。',
+    items:[
+      {id:'A1', t:'基本回位（10 分钟档）',
+       why:'这是本轮唯一的新功能。',
+       steps:'播放任意一集 → 拖到约 10 分钟处 → 打开播放设置弹窗 → 点「刷新」。',
+       expect:['重新取链后自动回到约 10 分钟处（允许差几秒）','全程没有任何提示弹层 / toast「点击跳转」']},
+      {id:'A2', t:'远位置回位（30 分钟以上档）',
+       why:'排除"只对短距离有效"的假象。',
+       steps:'拖到 30 分钟以后，再点一次「刷新」。',
+       expect:['同样直接回到原位置附近','不回到片头、也不回到片头跳过那个位置']},
+      {id:'A3', t:'连续刷新不异常',
+       why:'验证互斥计数不会让第二次刷新失效或反复跳。',
+       steps:'同一位置连点两次「刷新」（间隔几秒）。',
+       expect:['两次都正常回到位','不卡死、不黑屏、不出现来回跳']},
+      {id:'A4', t:'回位后继续正常操作',
+       why:'确认回位之后播放器状态没被弄脏。',
+       steps:'刷新回位后，拖进度条、暂停/继续、调一次倍速。',
+       expect:['全部正常','进度条显示的就是回位后的位置']},
+      {id:'A5', t:'短位置不跳（设计口径）',
+       why:'<3 秒不跳转是刻意设定，不是漏跳。',
+       steps:'刚开播 2 秒内点「刷新」。',
+       expect:['从头播放、不做跳转（符合预期）']}
+    ]
+  },
+  {
+    k:'B', cls:'', title:'回归：这些必须与旧版一模一样',
+    desc:'本轮改动的验收面：片头跳过 / 落点提示 / 重播 / 换集 / 换线路等旧机制都不能被牵连。若有变化点「不通过」。',
+    items:[
+      {id:'B1', t:'「点击跳转」落点提示仍在（正常进入路径）',
+       why:'正常进入时"历史进度不自动跳、只弹提示"是 09-24 定下的设计，不能变。',
+       steps:'从详情页进入一集有历史进度的片子（不要点刷新）。',
+       expect:['画面中央弹「点击跳转 xx:xx」','点了才跳；不点会自动淡出；进场从头播']},
+      {id:'B2', t:'片头跳过不受影响',
+       why:'片头跳过走的是与刷新回位完全不同的路径，属本次重点排查对象。',
+       steps:'给该片配置片头跳过秒数（播放设置里），退出后重新进这一集。',
+       expect:['照旧自动跳到片头结束位置','出现「已跳过片头 N 秒」提示']},
+      {id:'B3', t:'「重播」仍从头播',
+       why:'重播=清进度从头，不能被刷新回位传染。',
+       steps:'播放中点「重播」。',
+       expect:['从 0:00 开始','无提示、无回位']},
+      {id:'B4', t:'换集行为不变',
+       why:'换集不能跳到上一集的位置。',
+       steps:'用「下一集 / 上一集」各换一次，再用选集弹窗换一次。',
+       expect:['正常从新一集起点播放','不会跳到上一集的位置']},
+      {id:'B5', t:'换线路 / 选集行为不变',
+       why:'换线路属于重进页面类操作，确认没有异常回跳。',
+       steps:'在播放页选集弹窗切到另一条线路（或详情页换线路后进入）。',
+       expect:['正常按新线路播放','无异常回跳 / 进度错位']},
+      {id:'B6', t:'没点刷新时：弱网自动重取不产生跳转',
+       why:'自动重取走的是另一条内部路径，不能被回位逻辑波及。',
+       steps:'弱网播放触发一次自动重取恢复（或看日志有重取但你没点刷新）。',
+       expect:['恢复后行为与旧版一致','不出现"莫名其妙自动跳到某位置"']}
+    ]
+  },
+  {
+    k:'C', cls:'', title:'顺带变化 · 请你确认是否接受',
+    desc:'你已确认「接受」——切播放器/切解码档也自动回原位（与刷新同一机制）。⚠️ do 版实测部分时机不生效（切换解码没回位）；dp 已修复两处时序缺陷（读空兜底 + seek 落地才清意图），本轮请重点复测这两项。',
+    items:[
+      {id:'C1', t:'切换播放器（短按「播放器」按钮 / 弹窗选择）',
+       why:'与刷新共用同一条重载路径 ⇒ 顺带回位。',
+       steps:'播放到约 10 分钟 → 切到另一个内核（Exo↔IJK）。',
+       expect:['dp 复测重点：切换后应自动回到原位','仍不回位 → 点「不通过」并备注（我可按日志锚点定位）']},
+      {id:'C2', t:'切换解码档（「解析档」按钮 硬解/软解）',
+       why:'同上。',
+       steps:'播放到约 10 分钟 → 切换硬解↔软解。',
+       expect:['dp 复测重点：同上，应自动回到原位']}
+    ]
+  },
+  {
+    k:'D', cls:'', title:'边界与稳定性',
+    desc:'', 
+    items:[
+      {id:'D1', t:'片尾附近刷新（确认不会"一刷新就播完"）',
+       why:'回位有"最多到时长-3 秒"的保护。',
+       steps:'随便播一集，把进度条拖到还剩 1 分钟左右 → 点「刷新」。',
+       expect:['重新加载后回到接近原位置（或结尾前 3 秒），还能继续看到播完','不会一刷新就直接跳出「下一集」倒计时']},
+      {id:'D2', t:'刷新后马上退后台再回来',
+       why:'确认刷新途中切走不会把状态弄乱。',
+       steps:'点「刷新」→ 趁还在加载就按 Home 键回桌面 → 等约 5 秒 → 从最近任务切回 App。',
+       expect:['回来能正常继续加载/播放','不闪退、不卡死']},
+      {id:'D3', t:'刷新后马上退出播放页',
+       why:'确认退出瞬间不崩。',
+       steps:'点「刷新」→ 立刻按返回键退回详情页。',
+       expect:['不闪退；想继续看重新点播放即可']},
+      {id:'D4', t:'画中画进出正常（确认没被本轮改动牵连）',
+       why:'这条与刷新无关，只是防牵连检查。',
+       steps:'正常播放时点「画中画」进小窗 → 小窗里播几秒 → 点小窗放大回全屏。',
+       expect:['进出都正常，播放不中断']},
+      {id:'D5', t:'刷新与换集混着来',
+       why:'确认回位不会串到下一集去。',
+       steps:'先点「刷新」等它自动回到位 → 再点「下一集」。',
+       expect:['下一集从它自己的开头开始播（不会沿用上一集的位置）']}
+    ]
+  }
+];
+
+const STATIC = [
+  '构建五道闸门全过：1074 条 OK / 0 失败（do 轮 9 条 + dp 轮新增 4 条断言）',
+  'dex 符号复核：214 通过 / 0 失败（do 5 条 + dp 3 条）',
+  'do→dp 差异对照零疑点：1092 个文件 1087 个逐字节未变；类 0 消失；消失字符串全为编译器合成编号位移',
+  '装机复核：设备端 APK 与本地 dp 包 MD5 逐字节一致（1216ce48…）',
+  'dp 修复点：① 捕获瞬间读空 → 进度库兜底（并留「跳过 pos= dur=」痕迹）；② seek 落地才清意图（不再依赖出画事件，消除竞态）；③ 连点刷新用代次作废旧回位',
+  '机制不变：回位走独立路径（不碰片头跳过钩子、不碰落点提示）；因内核「片头跳过」的 seek 在 prepared 回调之后才执行，回位动作延后一帧执行',
+  '日志锚点：搜「刷新回位点」「刷新回位」「刷新回位点 跳过」'
+];
+
+const KEY='l1box_dp_refresh_checklist_v1';
+const META='L1Box_v1.0.0_release_20261013dp.apk ｜ 60,817,974 B ｜ MD5 1216ce48df1c17144da83c0e309a1f31 ｜ 装机已核验 2026-10-13';
+let S = JSON.parse(localStorage.getItem(KEY) || '{}');
+
+const app = document.getElementById('app');
+const ITEMS = [];
+
+GROUPS.forEach(g=>{
+  const sec = document.createElement('section');
+  sec.className = 'static'===g.cls ? 'static' : '';
+  sec.innerHTML = `<div class="ghead"><span class="badge">${g.k}</span><h2>${g.title}</h2>
+    <p>${g.desc}</p></div>`;
+  g.items.forEach(it=>{
+    ITEMS.push(it.id);
+    const c = document.createElement('div');
+    c.className='card'; c.dataset.id=it.id;
+    c.innerHTML = `
+      <div class="ctop">
+        <span class="id">${it.id}</span>
+        <span class="ctitle">${it.t}</span>
+        <span class="pick">
+          <button data-on="pass">通过</button>
+          <button data-on="fail">不通过</button>
+        </span>
+      </div>
+      <div class="why">${it.why}</div>
+      <div class="row"><span class="k">怎么测</span><span class="v">${it.steps}</span></div>
+      <div class="expect"><span class="k">预期</span>
+        <ul>${it.expect.map(e=>`<li>${e}</li>`).join('')}</ul></div>
+      <div class="note"><input placeholder="备注（可留空；C 组请写\"接受/不接受\"）"></div>`;
+    c.querySelectorAll('.pick button').forEach(b=>{
+      b.onclick=()=>{
+        const on=b.dataset.on, rec=S[it.id]||{};
+        rec.state = rec.state===on ? null : on;
+        S[it.id]=rec; save(); paint();
+        c.classList.remove('anim'); void c.offsetWidth; c.classList.add('anim');
+      };
+    });
+    const inp=c.querySelector('input');
+    inp.value = (S[it.id]||{}).note || '';
+    inp.oninput = ()=>{ S[it.id]=S[it.id]||{}; S[it.id].note=inp.value; save(); };
+    sec.appendChild(c);
+  });
+  app.appendChild(sec);
+});
+
+const secS = document.createElement('section');
+secS.className='static';
+secS.innerHTML = `<div class="ghead"><span class="badge">✓</span><h2>已静态验证通过</h2>
+  <p>构建期与装机阶段已用脚本取证，无需手测</p></div>` +
+  STATIC.map(s=>`<div class="card-static"><span class="ck">✓</span><span>${s}</span></div>`).join('');
+app.appendChild(secS);
+
+document.getElementById('meta').textContent = META;
+document.getElementById('n-total').textContent = ITEMS.length;
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+
+function paint(){
+  let ok=0,bad=0,done=0;
+  ITEMS.forEach(id=>{
+    const st=(S[id]||{}).state, card=document.querySelector(`.card[data-id="${id}"]`);
+    card.classList.toggle('pass', st==='pass');
+    card.classList.toggle('fail', st==='fail');
+    card.querySelectorAll('.pick button').forEach(b=>
+      b.classList.toggle('on', b.dataset.on===st));
+    if(st==='pass'){ok++;done++;} else if(st==='fail'){bad++;done++;}
+  });
+  document.getElementById('n-ok').textContent=ok;
+  document.getElementById('n-bad').textContent=bad;
+  document.getElementById('n-done').textContent=done;
+  document.getElementById('pbar').style.width=(done/ITEMS.length*100)+'%';
+}
+
+document.getElementById('reset').onclick=()=>{
+  if(!confirm('清空所有判定结果？')) return;
+  S={}; save();
+  document.querySelectorAll('.card input').forEach(i=>i.value='');
+  paint();
+};
+
+paint();
+</script>
+</body>
+</html>

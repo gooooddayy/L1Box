@@ -361,9 +361,8 @@ const STATIC = [
 
 const KEY='l1box_dn_checklist_v1';
 const META='L1Box_v1.0.0_release_20261012dn.apk ｜ 60,817,974 B ｜ MD5 2c2f1d8d9927948235c21aedbdbc1257 ｜ 装机 2026-10-12 20:05';
-
-const KEY='l1box_dm_checklist_v1';
-const META='L1Box_v1.0.0_release_20261012dm.apk ｜ 60,817,974 B ｜ MD5 9bcfd9bca6799f0e833c98c97563257c ｜ 装机 2026-10-12 18:25';
+// ⚠️ 2026-10-13 修复：此处原有 dm 轮的重复 `const KEY/META` 声明（单脚本块里重复 const ⇒ SyntaxError，
+//    整份清单 JS 无法执行）。已删除旧行；以后每轮更新只允许保留**唯一一组** KEY/META。
 let S = JSON.parse(localStorage.getItem(KEY) || '{}');
 
 const app = document.getElementById('app');
