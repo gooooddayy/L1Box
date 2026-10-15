@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>L1Box 五项功能自查清单</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#171b21; --card2:#1d222a; --line:#252b34;
+    --tx:#e8ecf1; --tx2:#9aa5b4; --tx3:#6b7480;
+    --ok:#4ade80; --accent:#5b9dff; --warn:#f5c451;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    background:var(--bg); color:var(--tx); font-size:15px; line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:0 16px 80px;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+
+  /* ── 顶部进度条（sticky） ── */
+  .bar{
+    position:sticky; top:0; z-index:20; background:rgba(15,18,22,.92);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
+    padding:14px 0 12px; margin-bottom:8px;
+  }
+  .bar-top{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+  .bar-top b{font-size:15px;font-weight:600}
+  .bar-top span{font-size:12.5px;color:var(--tx3);margin-left:auto;font-variant-numeric:tabular-nums}
+  .track{height:5px;border-radius:99px;background:var(--line);overflow:hidden}
+  .fill{
+    height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,#4ade80,#5b9dff);
+    transition:width .45s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ── 标题区 ── */
+  header{padding:26px 0 6px}
+  h1{font-size:23px;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--tx2);font-size:13.5px;margin-top:8px}
+  .meta{
+    display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;
+  }
+  .chip{
+    font-size:12.5px;color:var(--tx2);background:var(--card);
+    border:1px solid var(--line);border-radius:7px;padding:4px 10px;
+  }
+  .chip b{color:var(--tx);font-weight:600}
+
+  /* ── 通用前置 ── */
+  .prep{
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:10px;padding:15px 17px;margin:18px 0 26px;
+  }
+  .prep h3{font-size:13.5px;color:var(--accent);font-weight:600;margin-bottom:9px;letter-spacing:.3px}
+  .prep li{list-style:none;color:var(--tx2);font-size:13.5px;padding-left:16px;position:relative;margin:5px 0}
+  .prep li::before{content:"";position:absolute;left:2px;top:11px;width:5px;height:5px;border-radius:99px;background:var(--tx3)}
+  .prep li b{color:var(--tx);font-weight:600}
+
+  /* ── 功能卡片 ── */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    margin-bottom:16px;overflow:hidden;transition:border-color .3s,box-shadow .3s;
+  }
+  .card.done{border-color:rgba(74,222,128,.32)}
+  .card-hd{
+    display:flex;align-items:center;gap:12px;padding:15px 18px;
+    cursor:pointer;user-select:none;transition:background .2s;
+  }
+  .card-hd:hover{background:var(--card2)}
+  .num{
+    flex:none;width:27px;height:27px;border-radius:8px;background:var(--card2);
+    border:1px solid var(--line);color:var(--tx2);
+    display:flex;align-items:center;justify-content:center;
+    font-size:13.5px;font-weight:600;transition:all .3s;
+  }
+  .card.done .num{background:rgba(74,222,128,.14);border-color:rgba(74,222,128,.4);color:var(--ok)}
+  .ttl{font-size:16px;font-weight:600;flex:1;min-width:0}
+  .card.done .ttl{color:var(--ok)}
+  .dur{font-size:12px;color:var(--tx3);flex:none}
+  .cnt{font-size:12px;color:var(--tx3);flex:none;font-variant-numeric:tabular-nums}
+  .card.done .cnt{color:var(--ok)}
+  .arrow{flex:none;color:var(--tx3);font-size:12px;transition:transform .3s}
+  .card.open .arrow{transform:rotate(90deg)}
+  .card-bd{display:none;padding:0 18px 20px;border-top:1px solid var(--line);margin-top:0}
+  .card.open .card-bd{display:block;animation:fade .28s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+  .blk{margin-top:16px}
+  .blk-h{
+    font-size:12px;font-weight:600;letter-spacing:1.2px;color:var(--tx3);
+    text-transform:uppercase;margin-bottom:9px;
+  }
+  .blk-h.p{color:var(--ok)}
+  .blk-h.w{color:var(--warn)}
+
+  /* 步骤 */
+  .step{
+    display:flex;gap:11px;align-items:flex-start;padding:8px 10px;margin:0 -10px;
+    border-radius:8px;cursor:pointer;transition:background .18s;
+  }
+  .step:hover{background:var(--card2)}
+  .box{
+    flex:none;width:18px;height:18px;margin-top:4px;border-radius:5px;
+    border:1.5px solid #3a424e;position:relative;transition:all .22s;
+  }
+  .step.on .box{background:var(--ok);border-color:var(--ok)}
+  .box::after{
+    content:"";position:absolute;left:5px;top:1.5px;width:5px;height:9px;
+    border:solid #0f1216;border-width:0 2px 2px 0;transform:rotate(45deg) scale(0);
+    transition:transform .22s cubic-bezier(.4,1.6,.5,1);
+  }
+  .step.on .box::after{transform:rotate(45deg) scale(1)}
+  .step .tx{flex:1;font-size:14px;color:var(--tx2);transition:color .25s}
+  .step.on .tx{color:var(--tx3)}
+  .step.on .tx .k{opacity:.55;text-decoration:line-through;text-decoration-thickness:1px}
+  .k{color:var(--tx)}
+  .hl{color:var(--accent);font-weight:600}
+  .red{color:#ff8a8a;font-weight:600}
+
+  /* 通过标准 */
+  .pass{list-style:none}
+  .pass li{
+    position:relative;padding-left:24px;margin:6px 0;font-size:13.5px;color:var(--tx2);
+  }
+  .pass li::before{
+    content:"✓";position:absolute;left:4px;top:0;color:var(--ok);font-weight:700;font-size:13px;
+  }
+
+  /* 易误判 */
+  .warnbox{
+    background:rgba(245,196,81,.06);border:1px solid rgba(245,196,81,.2);
+    border-radius:9px;padding:13px 16px;
+  }
+  .warnbox ul{list-style:none}
+  .warnbox li{
+    position:relative;padding-left:20px;margin:7px 0;font-size:13.5px;color:#d9cfae;line-height:1.65;
+  }
+  .warnbox li::before{content:"!";position:absolute;left:4px;top:0;color:var(--warn);font-weight:700}
+  .warnbox li b{color:#f0e2b8}
+
+  /* 回报 */
+  .report{
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--warn);
+    border-radius:10px;padding:16px 18px;margin-top:26px;
+  }
+  .report h3{font-size:14px;font-weight:600;margin-bottom:10px}
+  .report ol{margin-left:18px}
+  .report li{font-size:13.5px;color:var(--tx2);margin:5px 0}
+  .report code{
+    background:var(--card2);border:1px solid var(--line);border-radius:5px;
+    padding:1px 7px;font-size:12.5px;color:var(--accent);
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+  }
+
+  .foot{display:flex;gap:10px;margin-top:24px}
+  .btn{
+    background:var(--card);border:1px solid var(--line);color:var(--tx2);
+    border-radius:8px;padding:9px 18px;font-size:13.5px;cursor:pointer;
+    transition:all .2s;font-family:inherit;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--tx)}
+  .btn:active{transform:scale(.97)}
+  @media print{
+    body{background:#fff;color:#000} .bar{position:static} .card-bd{display:block!important}
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="wrap">
+    <div class="bar-top">
+      <b>检查进度</b>
+      <span id="pct">0 / 0</span>
+    </div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <h1>五项功能自查清单</h1>
+    <div class="sub">对着做即可。每一条都可以点一下打勾，进度自动保存。</div>
+    <div class="meta">
+      <span class="chip">安装包 <b>L1Box_v1.1.1_release_20260912ad.apk</b></span>
+      <span class="chip">58.03 MB · 09-12 18:10 构建</span>
+      <span class="chip">点标题展开 / 收起</span>
+    </div>
+  </header>
+
+  <div class="prep">
+    <h3>通用前置（做之前先备好）</h3>
+    <ul>
+      <li>装最新包：文件名以 <b>ad</b> 结尾（含旋转按钮连点延寿）。若装的是旧包，以下现象可能与本文不符。</li>
+      <li>备一部 <b>多集剧</b>（至少 3 集）——测续播、连播、片头片尾。</li>
+      <li>备一集 <b>短视频</b>（10 分钟以内）——测缓冲灰条，长片会看不出在动。</li>
+      <li>每项检查前先 <b>按返回退出播放页再重进</b>，避免上一项的状态残留互相干扰。</li>
+      <li>全程看着有无 <b>闪退</b>；任何一项异常都先记下现象再继续下一项。</li>
+    </ul>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="report">
+    <h3>如果某一项没过，按这个格式发我</h3>
+    <ol>
+      <li>是哪个功能（第几项）</li>
+      <li>机型 + 安卓版本</li>
+      <li>做到第几步出的问题</li>
+      <li>看到的现象 / 期望的现象</li>
+      <li>能截图或录屏最好，没有也行</li>
+    </ol>
+    <p style="margin-top:11px;font-size:13px;color:var(--tx3)">
+      进阶（可选）：想直接看运行日志，用数据线连电脑执行
+      <code>adb logcat | grep -i l1box</code>，把关键几行发我。
+    </p>
+  </div>
+
+  <div class="foot">
+    <button class="btn" id="reset">清空所有勾选</button>
+    <button class="btn" id="expand">全部展开</button>
+  </div>
+</div>
+
+<script>
+const DATA = [
+  {
+    t: '断点续播',
+    d: '约 3 分钟',
+    steps: [
+      '打开一部剧的<span class="k">第 2 集</span>，让它播到 <span class="hl">1 分钟以上</span>（不足 10 秒不会提示，这是设计）。',
+      '按遥控/手机的<span class="k">【返回】键退出播放页</span>——进度是在离开播放页那一刻落盘的。',
+      '从历史记录或详情页，重新进入<span class="k">同一集的同一线路</span>。',
+      '看起播画面和提示条。',
+    ],
+    pass: [
+      '起播直接落到上次的位置，误差几秒以内',
+      '弹出提示条「<b>已从 01:23 继续播放</b>」，时间与落点一致',
+      '下方进度条的起始位置也停在落点上，不是从 0 开始',
+    ],
+    warn: [
+      '<b>只按暂停、不退出播放页</b> → 不会保存。这是设计如此，要退出页面才会写盘。',
+      '<b>换一条线路重进</b> → 从 0 开始。每条线路各存一份进度，不是 bug。',
+      '<b>播过 95% 再退出</b> → 重进是从头播。因为已算「看完」，清掉记录避免一进去就播完。',
+      '落点在 <b>10 秒以内</b> → 不弹提示条，但画面仍会跳到该位置。',
+      '等它自动连播跳到下一集后，<b>再回上一集</b> → 从头播。跳集时已清掉上一集的进度。',
+    ],
+  },
+  {
+    t: '自动连播 + 倒计时',
+    d: '约 4 分钟',
+    steps: [
+      '播放<span class="k">第 2 集</span>（确认后面还有第 3 集）。',
+      '把进度条拖到<span class="hl">距结尾约 20 秒</span>处，等它自己走到片尾。',
+      '观察屏幕中央浮层：数字是否 <span class="k">5 → 4 → 3 → 2 → 1</span> 每秒递减，然后自动跳第 3 集。',
+      '重来一次，浮层出现时点<span class="k">「立即播放」</span>——应立刻跳集。',
+      '<span class="red">重点：</span>再重来一次，浮层出现时点<span class="k">「取消」</span>——保持不动，看它会不会又弹一次、会不会自动跳集。',
+      '选<span class="k">最后一集</span>，拖到结尾，看是否停在最后一帧。',
+    ],
+    pass: [
+      '浮层文案「5 秒后播放下一集」，数字逐秒递减',
+      '倒计时走完自动跳下一集，且<b>只跳一集</b>（不会一次跳过两集）',
+      '点「立即播放」立刻跳集',
+      '点「取消」后：浮层消失，视频继续播到真正结尾，并且<b>不再弹第二次</b>、不自动跳集',
+      '最后一集播完不弹浮层，画面停在最后一帧',
+    ],
+    warn: [
+      '点「取消」后视频<b>仍会播到结尾</b>——这是正常的，取消只是不让它自动跳，不是停止播放。',
+      '如果你之前设过<b>片尾时间</b>，浮层会提前到「距结尾 N 秒」时出现，不是 bug。',
+      '同一集的浮层只会出现一次，片尾和播完不会各弹一次。',
+    ],
+  },
+  {
+    t: '进度条缓冲二级色（预缓冲）',
+    d: '约 5 分钟',
+    steps: [
+      '打开那集<span class="hl">短视频（10 分钟以内）</span>。',
+      '关键动作：起播后 <span class="red">3~5 秒内立刻暂停</span>——这时预缓冲还没填完，才看得到灰条推进。',
+      '保持暂停，盯住进度条<span class="k">灰色段的右端</span>（白色是已播、灰色是已缓冲），等 60 秒。',
+      '点播放恢复，看灰条是不是平滑接上、没有突然跳一段。',
+      '按 Home 退到后台等 30 秒，回到 App（仍是暂停态），灰条应继续推进。',
+      '拖动进度条试试，灰条不应闪烁跳动。',
+    ],
+    pass: [
+      '暂停期间灰条右端<b>仍在缓慢向右增长</b>（每秒刷新一次）',
+      '恢复播放时灰条不跳变',
+      '退后台再回来，灰条位置合理、没有异常跳变',
+      '拖动时灰条稳定不闪',
+    ],
+    warn: [
+      '<b>灰条「几乎不动」很可能是正常的</b>：百分比是整数 1% 一跳，1 小时片子 1% = 36 秒，1 小时 50 分的片子 1% ≈ 66 秒（在手机屏幕上约 3.7 像素）。所以必须用短视频才看得出。',
+      '若该片源下载慢，缓冲领先量本来就小，灰段可能只有 2~3 像素，看起来像「没有灰条」。',
+      '起播瞬间灰条突然拉满一段 = <b>预缓冲生效</b>的正常表现，不是错。',
+      '起播会先斗 1.5 秒再出画面，这是为了避免一小段就开播然后立刻卡住。',
+    ],
+  },
+  {
+    t: '片头片尾自动跳过提示',
+    d: '约 4 分钟',
+    steps: [
+      '播放一集，唤出操作栏，找到第二排的<span class="k">「片头/片尾　01:00　01:00　重置」</span>。',
+      '播到 <span class="hl">1:00</span> 处，点第一个时间（片头）——它把「当前播放位置」记为片头。',
+      '按返回退出播放页，重新进入同一集。',
+      '看画面是否<b>直接落到 1:00</b>，并弹「<b>已跳过片头 60 秒</b>」。',
+      '测片尾：播到<span class="hl">距结尾 30 秒</span>处，点第二个时间（片尾）。',
+      '继续播到该点，看是否弹出连播倒计时浮层。',
+      '点<span class="k">「重置」</span>，两个时间归零，重进该集应从头播。',
+    ],
+    pass: [
+      '设了片头后，起播落点就是设定的时间，并弹「已跳过片头 X 秒」',
+      '设了片尾后，播放到「距结尾 N 秒」时弹出连播倒计时',
+      '点「重置」后两项失效，重新从头播',
+      '两个时间按钮的显示值随设置实时变化',
+    ],
+    warn: [
+      '片头<b>只在起播那一刻生效一次</b>。播放中途改设置不会立刻跳，要重进该集才生效。',
+      '如果这集同时有续播进度，取<b>更靠后的那个</b>，而且只会弹一条提示（续播优先）。',
+      '<b>长按</b>片头/片尾按钮 = 直接归零，比点「重置」更快。',
+      '片头只能在<b>前半段</b>设置，片尾只能在<b>后半段</b>设置——超范围点了没反应是设计。',
+      '片头/片尾按集生效吗？改完后重进该集验证；换集要重新设。',
+    ],
+  },
+  {
+    t: '旋转按钮',
+    d: '约 4 分钟',
+    steps: [
+      '进入<span class="k">全屏播放</span>，点一下屏幕唤出操作栏——旋转按钮应一起出现。',
+      '什么都不动等 5 秒，操作栏自动隐藏，旋转按钮应<b>一起淡出</b>。',
+      '<span class="red">重点：</span>快速连续点屏幕 8~10 次（出现→消失→出现…），每次都确认操作栏出现时旋转按钮<b>看得见也点得动</b>。',
+      '<span class="red">重点：</span>点一次旋转——操作栏照旧立刻收起（好让你看清旋转结果），但<b>旋转按钮自己留在画面上</b>。',
+      '趁它还在，<span class="k">接着点第二次、第三次</span>（两次之间别超过 5 秒）——应能一路切到竖屏、反向竖屏；每次点击都把 5 秒重新计时。',
+      '停手别动，等 5 秒——旋转按钮应<b>自己淡出</b>。',
+      '短按顺序应为：<span class="k">横屏 → 反向横屏 → 竖屏 → 反向竖屏</span>，画面真的跟着转。',
+      '长按旋转按钮 → 提示「<b>已锁定旋转</b>」，图标变锁、变半透明。此时短按应提示「旋转已锁定，长按解锁」且画面不转；再长按 → 「<b>已解锁旋转</b>」。',
+      '进入画中画（小窗），旋转按钮应消失。',
+    ],
+    pass: [
+      '平时旋转按钮与操作栏同进同出，不残留',
+      '点旋转后操作栏收起、旋转按钮仍留着，可直接点下一档（不必重新唤出操作栏）',
+      '连点期间按钮一直在；停手 5 秒后它自己淡出',
+      '反复快速唤起后，按钮仍正常可见可点（不出现「看不见但能点」的隐形按钮）',
+      '短按四档循环顺序正确；长按锁定后短按无效并有提示',
+      '画中画下按钮消失',
+    ],
+    warn: [
+      '旋转按钮<b>只在全屏预览时显示</b>。退出全屏（画面变回小窗、下面露出剧集列表）和画中画下看不到，是上游刻意「避免误触」的设计，不是 bug。',
+      '点旋转后<b>操作栏会自动收起</b>是刻意的——好让你马上看到旋转后的完整画面；旋转按钮自己会多留 5 秒给你连点。',
+      '连点中途如果<b>点屏幕把操作栏唤回来</b>了，那 5 秒延寿即作废，旋转按钮重新跟操作栏同显同隐。',
+      '锁定后按钮变半透明 ≠ 坏了，那是锁定状态的标识。',
+      '若在竖屏档觉得「按钮不见了」，多半是操作栏那 5 秒闲置隐藏了——点一下屏幕它就回来（跟横屏档一样）。',
+    ],
+  },
+];
+
+const KEY = 'l1box_check_ac_v1';
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+const list = document.getElementById('list');
+
+DATA.forEach((f, fi) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML =
+    '<div class="card-hd">' +
+      '<div class="num">' + (fi + 1) + '</div>' +
+      '<div class="ttl">' + f.t + '</div>' +
+      '<div class="dur">' + f.d + '</div>' +
+      '<div class="cnt"></div>' +
+      '<div class="arrow">▶</div>' +
+    '</div>' +
+    '<div class="card-bd">' +
+      '<div class="blk"><div class="blk-h">操作步骤</div>' +
+        f.steps.map((s, si) =>
+          '<div class="step" data-k="' + fi + '_' + si + '"><div class="box"></div><div class="tx"><span class="k">' + s + '</span></div></div>'
+        ).join('') +
+      '</div>' +
+      '<div class="blk"><div class="blk-h p">通过标准</div><ul class="pass">' +
+        f.pass.map(p => '<li>' + p + '</li>').join('') +
+      '</ul></div>' +
+      '<div class="blk"><div class="blk-h w">容易误判的点（重点看）</div><div class="warnbox"><ul>' +
+        f.warn.map(w => '<li>' + w + '</li>').join('') +
+      '</ul></div></div>' +
+    '</div>';
+
+  const hd = card.querySelector('.card-hd');
+  hd.addEventListener('click', () => card.classList.toggle('open'));
+
+  const steps = card.querySelectorAll('.step');
+  steps.forEach(el => {
+    if (state[el.dataset.k]) el.classList.add('on');
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      el.classList.toggle('on');
+      state[el.dataset.k] = el.classList.contains('on');
+      localStorage.setItem(KEY, JSON.stringify(state));
+      refresh();
+    });
+  });
+  list.appendChild(card);
+});
+
+const cards = [...document.querySelectorAll('.card')];
+
+function refresh() {
+  let done = 0, total = 0;
+  cards.forEach((c, i) => {
+    const ss = c.querySelectorAll('.step');
+    let on = 0;
+    ss.forEach(s => { if (s.classList.contains('on')) on++; });
+    done += on; total += ss.length;
+    const full = on === ss.length;
+    c.classList.toggle('done', full);
+    c.querySelector('.cnt').textContent = on + '/' + ss.length;
+  });
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById('fill').style.width = pct + '%';
+  document.getElementById('pct').textContent = done + ' / ' + total + '　' + pct + '%';
+}
+refresh();
+
+document.getElementById('reset').addEventListener('click', () => {
+  Object.keys(state).forEach(k => delete state[k]);
+  localStorage.setItem(KEY, JSON.stringify(state));
+  document.querySelectorAll('.step.on').forEach(s => s.classList.remove('on'));
+  refresh();
+});
+
+let allOpen = false;
+document.getElementById('expand').addEventListener('click', e => {
+  allOpen = !allOpen;
+  cards.forEach(c => c.classList.toggle('open', allOpen));
+  e.target.textContent = allOpen ? '全部收起' : '全部展开';
+});
+</script>
+</body>
+</html>
